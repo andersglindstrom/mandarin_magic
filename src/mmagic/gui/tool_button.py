@@ -20,7 +20,7 @@ class ToolButton(QtGui.QPushButton):
         self.setText('Z')
         self.setFixedHeight(20)
         self.setFixedWidth(20)
-        self.setCheckable(True)
+#        self.setCheckable(True)
         self.clicked.connect(self.buttonClicked)
 
     def createContextMenu(self):

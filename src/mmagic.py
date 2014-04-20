@@ -1,0 +1,2 @@
+
+import mmagic.main
