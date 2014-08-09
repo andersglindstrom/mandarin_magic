@@ -6,6 +6,7 @@ from PyQt4 import QtGui, QtCore
 class ToolButton(QtGui.QPushButton):
 
     decompose = QtCore.pyqtSignal()
+    define = QtCore.pyqtSignal()
 
     def __init__(self, parent):
         super(ToolButton, self).__init__(parent)
@@ -25,11 +26,18 @@ class ToolButton(QtGui.QPushButton):
 
     def createContextMenu(self):
         self._contextMenu = QtGui.QMenu(self)
+
         action = self._contextMenu.addAction("Decompose")
         action.triggered.connect(self.emit_decompose)
 
+        action = self._contextMenu.addAction("Define")
+        action.triggered.connect(self.emit_define)
+
     def emit_decompose(self):
         self.decompose.emit()
+
+    def emit_define(self):
+        self.define.emit()
 
     def buttonClicked(self):
         self._contextMenu.exec_(QtGui.QCursor.pos())
