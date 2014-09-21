@@ -1,0 +1,18 @@
+Note:
+    . cards
+    . model
+
+    # Dict interface
+    . keys()
+    . values()
+    . items()
+
+    # Tags
+    . hasTag(tag)
+    . stringTags()
+    . setTagsFromString()
+    . delTag(self, tag)
+    . addTag(self, tag)
+
+
+Model
