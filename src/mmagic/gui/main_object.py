@@ -19,10 +19,22 @@ def get_english_definition(note):
         raise MagicException("Missing field: " + ENGLISH_FIELD)
     return note[ENGLISH_FIELD]
 
+def format_entry_meaning(entry):
+    result = entry.meaning[0]
+    for idx in xrange(1, len(entry.meaning)):
+        result += "; "
+        result += entry.meaning[idx]
+    return result
+
 def format_definition(dictionary_entries):
-    result = dictionary_entries[0].meaning
-    for idx in xrange(1, len(dictionary_entries)):
-        result += '\n' + entry[idx].meaning
+    if len(dictionary_entries) == 1:
+        result = format_entry_meaning(dictionary_entries[0])
+    else:
+        # Each entry is put on a separate line.
+        result = '[1] ' + format_entry_meaning(dictionary_entries[0])
+        for idx in xrange(1, len(dictionary_entries)):
+            id = idx+1
+            result += '<br>['+str(id)+'] ' + format_entry_meaning(dictionary_entries[idx])
     return result
 
 class MainObject:
@@ -63,9 +75,9 @@ class MainObject:
 
         # If not defined, add it to 'English' field
         english_definition = get_english_definition(note)
-        #if english_definition == '':
-            #note[ENGLISH_FIELD] = format_definition(dictionary_entries)
-        note[ENGLISH_FIELD] = 'Test definition'
+        print 'Definition:', english_definition
+        if english_definition == '':
+            note[ENGLISH_FIELD] = format_definition(dictionary_entries)
         print 'Field is now:', note[ENGLISH_FIELD]
         note.flush()
         mw.reset()
