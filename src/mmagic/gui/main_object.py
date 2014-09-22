@@ -21,6 +21,18 @@ def get_english_definition(note):
         raise MagicException("Missing field: " + ENGLISH_FIELD)
     return note[ENGLISH_FIELD]
 
+def has_english_field(note):
+    return ENGLISH_FIELD in note.keys()
+
+def set_english_field(note, value):
+    note[ENGLISH_FIELD] = value
+
+def has_pinyin_field(note):
+    return PINYIN_FIELD in note.keys()
+
+def set_pinyin_field(note, value):
+    note[PINYIN_FIELD] = value
+
 def format_entry_meaning(entry):
     result = entry.meaning[0]
     for idx in xrange(1, len(entry.meaning)):
@@ -28,7 +40,7 @@ def format_entry_meaning(entry):
         result += entry.meaning[idx]
     return result
 
-def format_definition(dictionary_entries):
+def format_english(dictionary_entries):
     if len(dictionary_entries) == 1:
         result = format_entry_meaning(dictionary_entries[0])
     else:
@@ -39,19 +51,22 @@ def format_definition(dictionary_entries):
             result += '<br>['+str(id)+'] ' + format_entry_meaning(dictionary_entries[idx])
     return result
 
+def format_pinyin(dictionary_entries):
+    return "Pinyin is here"
+
 class MainObject:
 
     def __init__(self, anki_main_window):
         self.mw = anki_main_window
         self.define_action = QtGui.QAction("Define", self.mw)
-        self.define_action.triggered.connect(self.do_define)
+        self.define_action.triggered.connect(self.do_define_from_browser)
         self.dictionary = mmagic.zhonglib.standard_dictionary()
 
     def setup_browser_menu(self, browser):
         self.browser = browser
         self.browser.form.menuEdit.addAction(self.define_action)
 
-    def do_define(self):
+    def do_define_from_browser(self):
         selected_notes = self.browser.selectedNotes()
         if not selected_notes:
             utils.showInfo("No notes selected.")
@@ -91,13 +106,13 @@ class MainObject:
         if len(dictionary_entries) == 0:
             raise MagicException('No dictionary entry for "' + mandarin_word + '"')
 
-        # If not defined, add it to 'English' field
-        english_definition = get_english_definition(note)
-        print 'Definition:', english_definition
-        if english_definition == '':
-            note[ENGLISH_FIELD] = format_definition(dictionary_entries)
-        print 'Field is now:', note[ENGLISH_FIELD]
+        # Add definition
+        if has_english_field(note):
+            set_english_field(note, format_english(dictionary_entries))
+
+        # Add pinyin
+        if has_pinyin_field(note):
+            set_pinyin_field(note, format_pinyin(dictionary_entries))
+
         note.flush()
         mw.reset()
-        # If not defined, add pinyin pronunciations
-
