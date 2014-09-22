@@ -70,18 +70,22 @@ class MainObject:
         button.setFixedWidth(20)
         button.setText('Z')
         button.clicked.connect(self.define_from_editor)
+        button.setStyle(editor.plastiqueStyle)
         editor.iconsBox.addWidget(button)
 
     def define_from_editor(self):
-        self.do_define_for_note(self.editor.note)
+        try:
+            self.do_define_for_note(self.editor.note)
+        except MagicException as e:
+            utils.showInfo(e.message())
 
     def do_define_for_note(self, note):
-        print "Doing define for note", note
         print note.keys()
         print note.model()
         # Extract Mandarin from card
         mandarin_word = get_mandarin_word(note)
-        print 'Mandarin word is', mandarin_word
+        if len(mandarin_word) == 0:
+            raise MagicException(MANDARIN_FIELD + ' field is empty')
         # Get definition
         dictionary_entries = self.dictionary.find(mandarin_word)
         if len(dictionary_entries) == 0:
