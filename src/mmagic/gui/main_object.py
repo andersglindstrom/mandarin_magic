@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 
 from PyQt4 import QtGui
+from PyQt4.QtGui import QPushButton
 from aqt import mw, utils
 from mmagic.core.exception import MagicException
 import mmagic.zhonglib
 
+# All this stuff should be moved to core
 ENGLISH_FIELD='English'
 MANDARIN_FIELD=u'漢字'
 PINYIN_FIELD=u'拼音'
@@ -56,12 +58,24 @@ class MainObject:
             return
         try:
             for note_id in selected_notes:
-                self.do_define_for_note(note_id)
+                note = mw.col.getNote(note_id)
+                self.do_define_for_note(note)
         except MagicException as e:
             utils.showInfo(e.message())
 
-    def do_define_for_note(self, note_id):
-        note = mw.col.getNote(note_id)
+    def setup_editor_button(self, editor):
+        self.editor = editor
+        button = QPushButton(editor.widget)
+        button.setFixedHeight(20)
+        button.setFixedWidth(20)
+        button.setText('Z')
+        button.clicked.connect(self.define_from_editor)
+        editor.iconsBox.addWidget(button)
+
+    def define_from_editor(self):
+        self.do_define_for_note(self.editor.note)
+
+    def do_define_for_note(self, note):
         print "Doing define for note", note
         print note.keys()
         print note.model()
