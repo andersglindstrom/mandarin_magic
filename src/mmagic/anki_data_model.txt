@@ -15,4 +15,5 @@ Note:
     . addTag(self, tag)
 
 
-Model
+Model (dict interface)
+    . 'name'

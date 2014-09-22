@@ -7,16 +7,30 @@ from mmagic.core.exception import MagicException
 import mmagic.zhonglib
 
 # All this stuff should be moved to core
-ENGLISH_FIELDS={'English'}
-MANDARIN_FIELDS={u'漢字', 'Hanzi', 'Chinese', 'Mandarin'}
-PINYIN_FIELDS={u'拼音', 'pīnyīn', 'Pīnyīn', 'Pinyin', 'Pronunciation'}
+ENGLISH_FIELDS=frozenset({'English'})
+MANDARIN_FIELDS=frozenset({u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
+PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 
 def calculate_field_name(note, possible_fields):
-    candidates = possible_fields & set(note.keys())
+    # Have to make this is a mutable set. Hence the explicit construction.
+    candidates = set(possible_fields & set(note.keys()))
     if len(candidates) > 1:
-        raise MagicException("More than one potential Mandarin field")
+        note_type = note.model()['name']
+        message ='Note type "' + note_type + '" has the following fields: '
+        message += candidates.pop()
+        while len(candidates) > 0:
+            message += ", " + candidates.pop()
+        message += '. It should have at most one of them.'
+        raise MagicException(message)
     if len(candidates) == 0:
-        raise MagicException("No Mandarin field.")
+        note_type = note.model()['name']
+        message = 'Note type "' + note_type + '" does not have any of the following fields: '
+        field_set = set(possible_fields)
+        message += field_set.pop()
+        while len(field_set) > 0:
+            message += ', ' + field_set.pop()
+        message += '. It should have one of them.'
+        raise MagicException(message)
     return candidates.pop()
 
 def get_mandarin_word(note):
@@ -84,12 +98,27 @@ class MainObject:
         if not selected_notes:
             utils.showInfo("No notes selected.")
             return
-        try:
-            for note_id in selected_notes:
-                note = mw.col.getNote(note_id)
+        errors = []
+        for note_id in selected_notes:
+            note = mw.col.getNote(note_id)
+            try:
                 self.populate_note(note)
-        except MagicException as e:
-            utils.showInfo(e.message())
+            except MagicException as e:
+                errors.append(e)
+        if len(errors) > 0:
+            message = "The following errors occurred:"
+            count = 0
+
+            # Want to avoid duplication of messages.
+            seen_messages = set()
+            for e in errors:
+                if e.message() in seen_messages:
+                    continue
+                count += 1
+                message += "<br><br>" + str(count) + ". " + e.message()
+                seen_messages = e.message()
+
+            utils.showInfo(message)
 
     def setup_editor_button(self, editor):
         self.editor = editor
@@ -103,29 +132,31 @@ class MainObject:
 
     def define_from_editor(self):
         try:
+            assert self.editor.note != None
             self.populate_note(self.editor.note)
         except MagicException as e:
             utils.showInfo(e.message())
 
     def populate_note(self, note):
+        try:
+            # Extract Mandarin from card
+            mandarin_word = get_mandarin_word(note)
+            if len(mandarin_word) == 0:
+                raise MagicException(MANDARIN_FIELD + ' field is empty')
 
-        # Extract Mandarin from card
-        mandarin_word = get_mandarin_word(note)
-        if len(mandarin_word) == 0:
-            raise MagicException(MANDARIN_FIELD + ' field is empty')
+            # Get dictionary entries
+            dictionary_entries = self.dictionary.find(mandarin_word)
+            if len(dictionary_entries) == 0:
+                raise MagicException('No dictionary entry for "' + mandarin_word + '"')
 
-        # Get dictionary entries
-        dictionary_entries = self.dictionary.find(mandarin_word)
-        if len(dictionary_entries) == 0:
-            raise MagicException('No dictionary entry for "' + mandarin_word + '"')
+            # Add Englih
+            if has_english_field(note):
+                set_english_field(note, format_english(dictionary_entries))
 
-        # Add Englih
-        if has_english_field(note):
-            set_english_field(note, format_english(dictionary_entries))
+            # Add 拼音
+            if has_pinyin_field(note):
+                set_pinyin_field(note, format_pinyin(dictionary_entries))
 
-        # Add 拼音
-        if has_pinyin_field(note):
-            set_pinyin_field(note, format_pinyin(dictionary_entries))
-
-        note.flush()
-        mw.reset()
+        finally:
+            note.flush()
+            mw.reset()
