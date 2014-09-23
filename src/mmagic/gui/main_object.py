@@ -12,6 +12,14 @@ MANDARIN_FIELDS=frozenset({u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
 
+#------------------------------------------------------------------------------
+#
+
+# From a set of possible field names, this function returns the actual field
+# used in a particular note.
+#
+# MagicException is thrown if there is no matching field or there is more than
+# one match.
 def calculate_field_name(note, possible_fields):
     # Have to make this is a mutable set. Hence the explicit construction.
     candidates = set(possible_fields & set(note.keys()))
@@ -33,6 +41,9 @@ def calculate_field_name(note, possible_fields):
         message += '. It should have one of them.'
         raise MagicException(message)
     return candidates.pop()
+
+#------------------------------------------------------------------------------
+# Field access
 
 def get_field(note, fields):
     return note[calculate_field_name(note, fields)]
@@ -69,6 +80,19 @@ def set_decomposition_field(note, value):
 
 def get_decompositioni_field(note):
     return get_field(note, DECOMPOSITION_FIELDS)
+
+#------------------------------------------------------------------------------
+# Note search
+
+def find_notes(collection, field_set, value):
+    result = []
+    for field in field_set:
+        notes = collection.findNotes(field + ":" + value)
+        result += notes
+    return result
+
+#------------------------------------------------------------------------------
+# Formatting routines
 
 def format_entry_meaning(entry):
     result = entry.meaning[0]
@@ -201,8 +225,7 @@ class MainObject:
     def from_editor_add_missing_cards(self):
         #print get_decompositioni_field(self.editor.note)
         notes = self.mw.col.findNotes(u'漢字:好')
-        print notes
+        print find_notes(self.mw.col, MANDARIN_FIELDS, u'你好')
 
     def note_exists_for_mandarin(note, word):
-        #return look_for_notes(self.mw.col, MANDARIN_FIELDS, word)
-        pass
+        return len(find_notes(self.mw.col, MANDARIN_FIELDS, word)) > 0
