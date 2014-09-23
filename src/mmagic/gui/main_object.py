@@ -4,12 +4,13 @@ from PyQt4 import QtGui
 from PyQt4.QtGui import QPushButton
 from aqt import mw, utils
 from mmagic.core.exception import MagicException
-import mmagic.zhonglib
+import mmagic.zhonglib as zhonglib
 
 # All this stuff should be moved to core
 ENGLISH_FIELDS=frozenset({'English'})
 MANDARIN_FIELDS=frozenset({u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
+DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
 
 def calculate_field_name(note, possible_fields):
     # Have to make this is a mutable set. Hence the explicit construction.
@@ -51,6 +52,12 @@ def has_pinyin_field(note):
 def set_pinyin_field(note, value):
     note[calculate_field_name(note, PINYIN_FIELDS)] = value
 
+def has_decomposition_field(note):
+    return len(set(note.keys()) & DECOMPOSITION_FIELDS) > 0
+
+def set_decomposition_field(note, value):
+    note[calculate_field_name(note, DECOMPOSITION_FIELDS)] = value
+
 def format_entry_meaning(entry):
     result = entry.meaning[0]
     for idx in xrange(1, len(entry.meaning)):
@@ -81,13 +88,22 @@ def format_pinyin(dictionary_entries):
             result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
     return result
 
+def format_decomposition(decompositon):
+    result = ''
+    if len(decompositon) == 0:
+        return result
+    result += decompositon[0]
+    for idx in xrange(1, len(decompositon)):
+        result += ', ' + decompositon[idx]
+    return result
+
 class MainObject:
 
     def __init__(self, anki_main_window):
         self.mw = anki_main_window
         self.define_action = QtGui.QAction("Define", self.mw)
         self.define_action.triggered.connect(self.do_define_from_browser)
-        self.dictionary = mmagic.zhonglib.standard_dictionary()
+        self.dictionary = zhonglib.standard_dictionary()
 
     def setup_browser_menu(self, browser):
         self.browser = browser
@@ -139,7 +155,7 @@ class MainObject:
 
     def populate_note(self, note):
         try:
-            # Extract Mandarin from card
+            # Extract 漢字 from card
             mandarin_word = get_mandarin_word(note)
             if len(mandarin_word) == 0:
                 raise MagicException(MANDARIN_FIELD + ' field is empty')
@@ -156,6 +172,11 @@ class MainObject:
             # Add 拼音
             if has_pinyin_field(note):
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
+
+            # Can decompose single characaters only just now
+            if len(mandarin_word) == 1 and has_decomposition_field(note):
+                decompositon = zhonglib.decompose_character(mandarin_word, flatten=True)
+                set_decomposition_field(note, format_decomposition(decompositon))
 
         finally:
             note.flush()
