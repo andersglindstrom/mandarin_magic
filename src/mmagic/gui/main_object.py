@@ -174,8 +174,8 @@ class MainObject:
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
 
             # Can decompose single characaters only just now
-            if len(mandarin_word) == 1 and has_decomposition_field(note):
-                decompositon = zhonglib.decompose_character(mandarin_word, flatten=True)
+            if has_decomposition_field(note):
+                decompositon = zhonglib.decompose(mandarin_word)
                 set_decomposition_field(note, format_decomposition(decompositon))
 
         finally:
