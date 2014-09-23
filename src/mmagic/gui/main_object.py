@@ -91,6 +91,12 @@ def find_notes(collection, field_set, value):
         result += notes
     return result
 
+def note_exists_for_mandarin(collection, word):
+    print 'Looking for ' + word
+    notes = find_notes(collection, MANDARIN_FIELDS, word)
+    print notes
+    return len(notes) > 0
+
 #------------------------------------------------------------------------------
 # Formatting routines
 
@@ -124,13 +130,16 @@ def format_pinyin(dictionary_entries):
             result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
     return result
 
-def format_decomposition(decompositon):
+def format_decomposition(collection, decompositon):
     result = ''
-    if len(decompositon) == 0:
-        return result
-    result += decompositon[0]
-    for idx in xrange(1, len(decompositon)):
-        result += ', ' + decompositon[idx]
+    for idx in xrange(0, len(decompositon)):
+        component = decompositon[idx]
+        if not note_exists_for_mandarin(collection, component):
+            component = '<font color=red>' + component + '</font>'
+        if idx == 0:
+            result += component
+        else:
+            result += ', ' + component
     return result
 
 class MainObject:
@@ -216,16 +225,14 @@ class MainObject:
             # Can decompose single characaters only just now
             if has_decomposition_field(note):
                 decompositon = zhonglib.decompose(mandarin_word)
-                set_decomposition_field(note, format_decomposition(decompositon))
+                set_decomposition_field(\
+                    note,\
+                    format_decomposition(self.mw.col, decompositon\
+                ))
 
         finally:
             note.flush()
             mw.reset()
     
     def from_editor_add_missing_cards(self):
-        #print get_decompositioni_field(self.editor.note)
-        notes = self.mw.col.findNotes(u'漢字:好')
-        print find_notes(self.mw.col, MANDARIN_FIELDS, u'你好')
-
-    def note_exists_for_mandarin(note, word):
-        return len(find_notes(self.mw.col, MANDARIN_FIELDS, word)) > 0
+        pass
