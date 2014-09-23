@@ -34,29 +34,41 @@ def calculate_field_name(note, possible_fields):
         raise MagicException(message)
     return candidates.pop()
 
+def get_field(note, fields):
+    return note[calculate_field_name(note, fields)]
+
+def has_field(note, fields):
+    return len(set(note.keys()) & fields) > 0
+
+def set_field(note, fields, value):
+    note[calculate_field_name(note, fields)] = value
+
 def get_mandarin_word(note):
-    return note[calculate_field_name(note, MANDARIN_FIELDS)]
+    return get_field(note, MANDARIN_FIELDS)
 
 def get_english_definition(note):
-    return note[calculate_field_name(note, PINYIN_FIELDS)]
+    return get_field(note, ENGLISH_FIELDS)
 
 def has_english_field(note):
-    return len(set(note.keys()) & ENGLISH_FIELDS) > 0
+    return has_field(note, ENGLISH_FIELDS)
 
 def set_english_field(note, value):
-    note[calculate_field_name(note, ENGLISH_FIELDS)] = value
+    set_field(note, ENGLISH_FIELDS, value)
 
 def has_pinyin_field(note):
-    return len(set(note.keys()) & PINYIN_FIELDS) > 0
+    return has_field(note, PINYIN_FIELDS)
 
 def set_pinyin_field(note, value):
-    note[calculate_field_name(note, PINYIN_FIELDS)] = value
+    set_field(note, PINYIN_FIELDS, value)
 
 def has_decomposition_field(note):
-    return len(set(note.keys()) & DECOMPOSITION_FIELDS) > 0
+    return has_field(note, DECOMPOSITION_FIELDS)
 
 def set_decomposition_field(note, value):
-    note[calculate_field_name(note, DECOMPOSITION_FIELDS)] = value
+    set_field(note, DECOMPOSITION_FIELDS, value)
+
+def get_decompositioni_field(note):
+    return get_field(note, DECOMPOSITION_FIELDS)
 
 def format_entry_meaning(entry):
     result = entry.meaning[0]
@@ -101,13 +113,15 @@ class MainObject:
 
     def __init__(self, anki_main_window):
         self.mw = anki_main_window
-        self.define_action = QtGui.QAction("Define", self.mw)
-        self.define_action.triggered.connect(self.do_define_from_browser)
+
+        self.do_define_action = QtGui.QAction("Define", self.mw)
+        self.do_define_action.triggered.connect(self.do_define_from_browser)
+
         self.dictionary = zhonglib.standard_dictionary()
 
     def setup_browser_menu(self, browser):
         self.browser = browser
-        self.browser.form.menuEdit.addAction(self.define_action)
+        self.browser.form.menuEdit.addAction(self.do_define_action)
 
     def do_define_from_browser(self):
         selected_notes = self.browser.selectedNotes()
@@ -122,31 +136,32 @@ class MainObject:
             except MagicException as e:
                 errors.append(e)
         if len(errors) > 0:
-            message = "The following errors occurred:"
-            count = 0
-
+            message = "The following problems were encountered:"
             # Want to avoid duplication of messages.
             seen_messages = set()
             for e in errors:
                 if e.message() in seen_messages:
                     continue
-                count += 1
-                message += "<br><br>" + str(count) + ". " + e.message()
-                seen_messages = e.message()
+                seen_messages.add(e.message())
+                message += "<br><br>" + str(len(seen_messages)) + ". " + e.message()
 
             utils.showInfo(message)
 
-    def setup_editor_button(self, editor):
+    def setup_button(self, editor, text, method_to_call):
         self.editor = editor
         button = QPushButton(editor.widget)
         button.setFixedHeight(20)
         button.setFixedWidth(20)
-        button.setText('Z')
-        button.clicked.connect(self.define_from_editor)
+        button.setText(text)
+        button.clicked.connect(method_to_call)
         button.setStyle(editor.plastiqueStyle)
         editor.iconsBox.addWidget(button)
 
-    def define_from_editor(self):
+    def setup_editor_buttons(self, editor):
+        self.setup_button(editor, 'Z', self.from_editor_populate_note)
+        self.setup_button(editor, '+', self.from_editor_add_missing_cards)
+
+    def from_editor_populate_note(self):
         try:
             assert self.editor.note != None
             self.populate_note(self.editor.note)
@@ -158,7 +173,8 @@ class MainObject:
             # Extract 漢字 from card
             mandarin_word = get_mandarin_word(note)
             if len(mandarin_word) == 0:
-                raise MagicException(MANDARIN_FIELD + ' field is empty')
+                field_name = calculate_field_name(note, MANDARIN_FIELDS)
+                raise MagicException(field_name + ' field is empty')
 
             # Get dictionary entries
             dictionary_entries = self.dictionary.find(mandarin_word)
@@ -181,3 +197,12 @@ class MainObject:
         finally:
             note.flush()
             mw.reset()
+    
+    def from_editor_add_missing_cards(self):
+        #print get_decompositioni_field(self.editor.note)
+        notes = self.mw.col.findNotes(u'漢字:好')
+        print notes
+
+    def note_exists_for_mandarin(note, word):
+        #return look_for_notes(self.mw.col, MANDARIN_FIELDS, word)
+        pass
