@@ -46,8 +46,12 @@ def calculate_field_name(note, possible_fields):
 #------------------------------------------------------------------------------
 # Field access
 
-def get_field(note, fields):
-    return note[calculate_field_name(note, fields)]
+def get_field(note, fields, failIfEmpty=False):
+    result = note[calculate_field_name(note, fields)]
+    if failIfEmpty and len(result) == 0:
+        field_name = calculate_field_name(note, fields)
+        raise MagicException(field_name + ' field is empty')
+    return result
 
 def has_field(note, fields):
     return len(set(note.keys()) & fields) > 0
@@ -55,14 +59,14 @@ def has_field(note, fields):
 def set_field(note, fields, value):
     note[calculate_field_name(note, fields)] = value
 
-def get_mandarin_word(note):
-    return get_field(note, MANDARIN_FIELDS)
+def get_mandarin_word(note, failIfEmpty=False):
+    return get_field(note, MANDARIN_FIELDS, failIfEmpty)
 
 def set_mandarin_field(note, value):
     set_field(note, MANDARIN_FIELDS, value)
 
-def get_english_definition(note):
-    return get_field(note, ENGLISH_FIELDS)
+def get_english_definition(note, failIfEmpty=False):
+    return get_field(note, ENGLISH_FIELDS, failIfEmpty)
 
 def has_english_field(note):
     return has_field(note, ENGLISH_FIELDS)
@@ -82,8 +86,8 @@ def has_decomposition_field(note):
 def set_decomposition_field(note, value):
     set_field(note, DECOMPOSITION_FIELDS, value)
 
-def get_decompositioni_field(note):
-    return get_field(note, DECOMPOSITION_FIELDS)
+def get_decompositioni_field(note, failIfEmpty=False):
+    return get_field(note, DECOMPOSITION_FIELDS, failIfEmpty)
 
 #------------------------------------------------------------------------------
 # Note search
@@ -134,17 +138,26 @@ def format_pinyin(dictionary_entries):
             result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
     return result
 
+def add_highlight(text):
+    return '<font color=red>' + text + '</font>'
+
+def remove_highlight(text):
+    return text.replace('<font color=red>', '').replace('</font>', '')
+
 def format_decomposition(collection, decompositon):
     result = ''
     for idx in xrange(0, len(decompositon)):
         component = decompositon[idx]
         if not note_exists_for_mandarin(collection, component):
-            component = '<font color=red>' + component + '</font>'
+            component = add_highlight(component)
         if idx == 0:
             result += component
         else:
             result += ', ' + component
     return result
+
+def unformat_decomposition(decompositon):
+    return [remove_highlight(x.strip().rstrip()) for x in decompositon.split(',')]
 
 class MainObject:
 
@@ -208,10 +221,7 @@ class MainObject:
     def populate_note(self, note):
         try:
             # Extract 漢字 from card
-            mandarin_word = get_mandarin_word(note)
-            if len(mandarin_word) == 0:
-                field_name = calculate_field_name(note, MANDARIN_FIELDS)
-                raise MagicException(field_name + ' field is empty')
+            mandarin_word = get_mandarin_word(note, failIfEmpty=True)
 
             # Get dictionary entries
             dictionary_entries = self.dictionary.find(mandarin_word)
@@ -238,10 +248,38 @@ class MainObject:
             note.flush()
             mw.reset(guiOnly = True)
     
-    def from_editor_add_missing_cards(self):
+    def add_mandarin_note(self, text):
         assert self.editor.note != None
         model = self.editor.note.model()
         note = Note(self.mw.col, model)
-        set_mandarin_field(note, u'號碼')
+        set_mandarin_field(note, text)
         mw.col.addNote(note)
-        mw.reset()
+        self.populate_note(note)
+
+    def from_editor_add_missing_cards(self):
+        try:
+            assert self.editor.note != None
+            note = self.editor.note
+            if not has_decomposition_field(note):
+                raise MagicException("Note does not have a decomposition field.")
+
+            # Add a note for every composition component that doesn't yet
+            # have one.
+            mandarin_word = get_mandarin_word(note, failIfEmpty=True)
+            decompositon = zhonglib.decompose(mandarin_word)
+            for component in decompositon:
+                if not note_exists_for_mandarin(self.mw.col, component):
+                    self.add_mandarin_note(component)
+
+            # Have to reformat decompositon field.
+            set_decomposition_field(\
+                note,\
+                format_decomposition(self.mw.col, decompositon\
+            ))
+            note.flush()
+            mw.reset(guiOnly = True)
+
+        except MagicException as e:
+            utils.showInfo(e.message())
+        finally:
+            mw.reset()
