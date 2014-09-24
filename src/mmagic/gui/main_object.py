@@ -3,12 +3,13 @@
 from PyQt4 import QtGui
 from PyQt4.QtGui import QPushButton
 from aqt import mw, utils
+from anki.notes import Note
 from mmagic.core.exception import MagicException
 import mmagic.zhonglib as zhonglib
 
 # All this stuff should be moved to core
-ENGLISH_FIELDS=frozenset({'English'})
-MANDARIN_FIELDS=frozenset({u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
+MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
+ENGLISH_FIELDS=frozenset({'Back', 'English'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
 
@@ -56,6 +57,9 @@ def set_field(note, fields, value):
 
 def get_mandarin_word(note):
     return get_field(note, MANDARIN_FIELDS)
+
+def set_mandarin_field(note, value):
+    set_field(note, MANDARIN_FIELDS, value)
 
 def get_english_definition(note):
     return get_field(note, ENGLISH_FIELDS)
@@ -163,7 +167,7 @@ class MainObject:
             return
         errors = []
         for note_id in selected_notes:
-            note = mw.col.getNote(note_id)
+            note = self.mw.col.getNote(note_id)
             try:
                 self.populate_note(note)
             except MagicException as e:
@@ -232,7 +236,12 @@ class MainObject:
 
         finally:
             note.flush()
-            mw.reset()
+            mw.reset(guiOnly = True)
     
     def from_editor_add_missing_cards(self):
-        pass
+        assert self.editor.note != None
+        model = self.editor.note.model()
+        note = Note(self.mw.col, model)
+        set_mandarin_field(note, u'號碼')
+        mw.col.addNote(note)
+        mw.reset()
