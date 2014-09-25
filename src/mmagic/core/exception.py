@@ -10,10 +10,13 @@ class MagicException(Exception):
     def get_message_list(self):
         return [self.message]
 
-class MultiException(Exception):
+class MultiException(MagicException):
 
     def __init__(self):
         self.exceptions = []
+
+    def __len__(self):
+        return len(self.exceptions)
 
     def append(self, exception):
         self.exceptions.append(exception)

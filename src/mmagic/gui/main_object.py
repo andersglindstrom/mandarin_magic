@@ -8,8 +8,8 @@ import mmagic.core.exception as exception
 import mmagic.zhonglib as zhonglib
 
 # All this stuff should be moved to core
-MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin'})
-ENGLISH_FIELDS=frozenset({'Back', 'English'})
+MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin', 'Radical'})
+ENGLISH_FIELDS=frozenset({'Back', 'English', 'Meaning'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
 
@@ -218,7 +218,11 @@ class MainObject:
                 self.populate_note(note)
             except exception.MagicException as e:
                 errors.append(e)
+            finally:
+                note.flush()
         show_error(errors)
+        mw.reset(guiOnly=True)
+        utils.showInfo('Done.')
 
     def setup_button(self, editor, text, method_to_call):
         self.editor = editor
@@ -240,17 +244,27 @@ class MainObject:
             self.populate_note(self.editor.note)
         except exception.MagicException as e:
             show_error(e)
+        finally:
+            self.editor.note.flush()
+            mw.reset(guiOnly = True)
 
     def populate_note(self, note):
-        try:
-            # Extract 漢字 from card
-            mandarin_word = get_mandarin_word(note, failIfEmpty=True)
+        # Extract 漢字 from card
+        mandarin_word = get_mandarin_word(note, failIfEmpty=True)
 
-            # Get dictionary entries
-            dictionary_entries = self.dictionary.find(mandarin_word)
-            if len(dictionary_entries) == 0:
-                raise exception.MagicException('No dictionary entry for "' + mandarin_word + '"')
+        # In the following, we want to populate as many fields as possible
+        # even if errors occur on previous field.  The following object
+        # is used to accumulate errors.  At the end, the object is raised
+        # as an exception if it actually has errors.
+        errors = exception.MultiException()
 
+        # Get dictionary entries
+        dictionary_entries = self.dictionary.find(mandarin_word)
+        if len(dictionary_entries) == 0:
+            message = 'No dictionary entry for "' + mandarin_word + '"'
+            errors.append(exception.MagicException(message))
+
+        if len(dictionary_entries) > 0:
             # Add Englih
             if has_empty_english_field(note):
                 set_english_field(note, format_english(dictionary_entries))
@@ -259,25 +273,37 @@ class MainObject:
             if has_empty_pinyin_field(note):
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
 
-            # Can decompose single characaters only just now
-            if has_empty_decomposition_field(note):
+        # Can decompose single characaters only just now
+        print 'Decomposition field:"' + get_decomposition_field(note) + '"'
+        if has_empty_decomposition_field(note):
+            try:
                 decompositon = zhonglib.decompose(mandarin_word)
+                print 'decompositon:',decompositon
                 set_decomposition_field(\
                     note,\
                     format_decomposition(self.mw.col, decompositon\
                 ))
+            except MagicException as e:
+                errors.append(e)
+        else:
+            print 'Decomposition field is not empty'
 
-        finally:
-            note.flush()
-            mw.reset(guiOnly = True)
+        if len(errors) > 0:
+            raise errors
     
     def add_mandarin_note(self, text):
         assert self.editor.note != None
         model = self.editor.note.model()
         note = Note(self.mw.col, model)
         set_mandarin_field(note, text)
-        mw.col.addNote(note)
+        print 'note.isDupeOrEmpty (1):', note.dupeOrEmpty()
+        templates = mw.col.findTemplates(note)
+        print 'templates:',templates
         self.populate_note(note)
+        # The following will flush the note
+        cards_added = mw.col.addNote(note)
+        print 'cards_added:', cards_added
+        print 'note.isDupeOrEmpty (2):', note.dupeOrEmpty()
 
     def from_editor_add_missing_cards(self):
         assert self.editor.note != None
@@ -288,19 +314,22 @@ class MainObject:
         # Add a note for every composition component that doesn't yet
         # have one.
         mandarin_word = get_mandarin_word(note, failIfEmpty=True)
-        decompositon = zhonglib.decompose(mandarin_word)
+        decomposition = zhonglib.decompose(mandarin_word)
+        print 'decomposition:', decomposition
         errors = exception.MultiException()
-        for component in decompositon:
+        for component in decomposition:
             if not note_exists_for_mandarin(self.mw.col, component):
                 try:
+                    print 'Adding note for "%s"' % component
                     self.add_mandarin_note(component)
                 except exception.MagicException as e:
+                    print e
                     errors.append(e)
 
         # Have to reformat decompositon field.
         set_decomposition_field(\
             note,\
-            format_decomposition(self.mw.col, decompositon\
+            format_decomposition(self.mw.col, decomposition\
         ))
         note.flush()
         mw.reset(guiOnly = True)
