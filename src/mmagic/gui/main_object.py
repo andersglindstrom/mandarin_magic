@@ -4,7 +4,7 @@ from PyQt4 import QtGui
 from PyQt4.QtGui import QPushButton
 from aqt import mw, utils
 from anki.notes import Note
-from mmagic.core.exception import MagicException
+import mmagic.core.exception as exception
 import mmagic.zhonglib as zhonglib
 
 # All this stuff should be moved to core
@@ -31,7 +31,7 @@ def calculate_field_name(note, possible_fields):
         while len(candidates) > 0:
             message += ", " + candidates.pop()
         message += '. It should have at most one of them.'
-        raise MagicException(message)
+        raise exception.MagicException(message)
     if len(candidates) == 0:
         note_type = note.model()['name']
         message = 'Note type "' + note_type + '" does not have any of the following fields: '
@@ -40,7 +40,7 @@ def calculate_field_name(note, possible_fields):
         while len(field_set) > 0:
             message += ', ' + field_set.pop()
         message += '. It should have one of them.'
-        raise MagicException(message)
+        raise exception.MagicException(message)
     return candidates.pop()
 
 #------------------------------------------------------------------------------
@@ -50,11 +50,14 @@ def get_field(note, fields, failIfEmpty=False):
     result = note[calculate_field_name(note, fields)]
     if failIfEmpty and len(result) == 0:
         field_name = calculate_field_name(note, fields)
-        raise MagicException(field_name + ' field is empty')
+        raise exception.MagicException(field_name + ' field is empty')
     return result
 
 def has_field(note, fields):
     return len(set(note.keys()) & fields) > 0
+
+def has_empty_field(note, fields):
+    return has_field(note, fields) and len(get_field(note, fields)) == 0
 
 def set_field(note, fields, value):
     note[calculate_field_name(note, fields)] = value
@@ -71,11 +74,17 @@ def get_english_definition(note, failIfEmpty=False):
 def has_english_field(note):
     return has_field(note, ENGLISH_FIELDS)
 
+def has_empty_english_field(note):
+    return has_empty_field(note, ENGLISH_FIELDS)
+
 def set_english_field(note, value):
     set_field(note, ENGLISH_FIELDS, value)
 
 def has_pinyin_field(note):
     return has_field(note, PINYIN_FIELDS)
+
+def has_empty_pinyin_field(note):
+    return has_empty_field(note, PINYIN_FIELDS)
 
 def set_pinyin_field(note, value):
     set_field(note, PINYIN_FIELDS, value)
@@ -83,10 +92,13 @@ def set_pinyin_field(note, value):
 def has_decomposition_field(note):
     return has_field(note, DECOMPOSITION_FIELDS)
 
+def has_empty_decomposition_field(note):
+    return has_empty_field(note, DECOMPOSITION_FIELDS)
+
 def set_decomposition_field(note, value):
     set_field(note, DECOMPOSITION_FIELDS, value)
 
-def get_decompositioni_field(note, failIfEmpty=False):
+def get_decomposition_field(note, failIfEmpty=False):
     return get_field(note, DECOMPOSITION_FIELDS, failIfEmpty)
 
 #------------------------------------------------------------------------------
@@ -145,6 +157,8 @@ def remove_highlight(text):
     return text.replace('<font color=red>', '').replace('</font>', '')
 
 def format_decomposition(collection, decompositon):
+    if len(decompositon) == 0:
+        return 'None'
     result = ''
     for idx in xrange(0, len(decompositon)):
         component = decompositon[idx]
@@ -158,6 +172,25 @@ def format_decomposition(collection, decompositon):
 
 def unformat_decomposition(decompositon):
     return [remove_highlight(x.strip().rstrip()) for x in decompositon.split(',')]
+
+# exception must be an instance of MagicException or its subclasses
+def show_error(exception):
+    # Use a set to avoid duplicates. Use a list to support indexing.
+    all_messages = list(set(exception.get_message_list()))
+    print 'all_messages:', all_messages
+    # No Messages
+    if len(all_messages) == 0:
+        return
+    # Single error only
+    if len(all_messages) == 1:
+        utils.showInfo(all_messages[0])
+        return
+    # Multiple errors
+    display_message = "The following problems were encountered:<br>"
+    # Prepend an ordinal to each message.
+    for idx in xrange(len(all_messages)):
+        display_message += "<br>" + str(idx+1) + ". " + all_messages[idx]
+    utils.showInfo(display_message)
 
 class MainObject:
 
@@ -178,24 +211,14 @@ class MainObject:
         if not selected_notes:
             utils.showInfo("No notes selected.")
             return
-        errors = []
+        errors = exception.MultiException()
         for note_id in selected_notes:
             note = self.mw.col.getNote(note_id)
             try:
                 self.populate_note(note)
-            except MagicException as e:
+            except exception.MagicException as e:
                 errors.append(e)
-        if len(errors) > 0:
-            message = "The following problems were encountered:"
-            # Want to avoid duplication of messages.
-            seen_messages = set()
-            for e in errors:
-                if e.message() in seen_messages:
-                    continue
-                seen_messages.add(e.message())
-                message += "<br><br>" + str(len(seen_messages)) + ". " + e.message()
-
-            utils.showInfo(message)
+        show_error(errors)
 
     def setup_button(self, editor, text, method_to_call):
         self.editor = editor
@@ -215,8 +238,8 @@ class MainObject:
         try:
             assert self.editor.note != None
             self.populate_note(self.editor.note)
-        except MagicException as e:
-            utils.showInfo(e.message())
+        except exception.MagicException as e:
+            show_error(e)
 
     def populate_note(self, note):
         try:
@@ -226,18 +249,18 @@ class MainObject:
             # Get dictionary entries
             dictionary_entries = self.dictionary.find(mandarin_word)
             if len(dictionary_entries) == 0:
-                raise MagicException('No dictionary entry for "' + mandarin_word + '"')
+                raise exception.MagicException('No dictionary entry for "' + mandarin_word + '"')
 
             # Add Englih
-            if has_english_field(note):
+            if has_empty_english_field(note):
                 set_english_field(note, format_english(dictionary_entries))
 
             # Add 拼音
-            if has_pinyin_field(note):
+            if has_empty_pinyin_field(note):
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
 
             # Can decompose single characaters only just now
-            if has_decomposition_field(note):
+            if has_empty_decomposition_field(note):
                 decompositon = zhonglib.decompose(mandarin_word)
                 set_decomposition_field(\
                     note,\
@@ -257,29 +280,29 @@ class MainObject:
         self.populate_note(note)
 
     def from_editor_add_missing_cards(self):
-        try:
-            assert self.editor.note != None
-            note = self.editor.note
-            if not has_decomposition_field(note):
-                raise MagicException("Note does not have a decomposition field.")
+        assert self.editor.note != None
+        note = self.editor.note
+        if not has_decomposition_field(note):
+            raise exception.MagicException("Note does not have a decomposition field.")
 
-            # Add a note for every composition component that doesn't yet
-            # have one.
-            mandarin_word = get_mandarin_word(note, failIfEmpty=True)
-            decompositon = zhonglib.decompose(mandarin_word)
-            for component in decompositon:
-                if not note_exists_for_mandarin(self.mw.col, component):
+        # Add a note for every composition component that doesn't yet
+        # have one.
+        mandarin_word = get_mandarin_word(note, failIfEmpty=True)
+        decompositon = zhonglib.decompose(mandarin_word)
+        errors = exception.MultiException()
+        for component in decompositon:
+            if not note_exists_for_mandarin(self.mw.col, component):
+                try:
                     self.add_mandarin_note(component)
+                except exception.MagicException as e:
+                    errors.append(e)
 
-            # Have to reformat decompositon field.
-            set_decomposition_field(\
-                note,\
-                format_decomposition(self.mw.col, decompositon\
-            ))
-            note.flush()
-            mw.reset(guiOnly = True)
+        # Have to reformat decompositon field.
+        set_decomposition_field(\
+            note,\
+            format_decomposition(self.mw.col, decompositon\
+        ))
+        note.flush()
+        mw.reset(guiOnly = True)
 
-        except MagicException as e:
-            utils.showInfo(e.message())
-        finally:
-            mw.reset()
+        show_error(errors)
