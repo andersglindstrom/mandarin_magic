@@ -116,9 +116,7 @@ def find_notes(collection, field_set, value):
     return result
 
 def note_exists_for_mandarin(collection, word):
-    print 'Looking for ' + word
     notes = find_notes(collection, MANDARIN_FIELDS, word)
-    print notes
     return len(notes) > 0
 
 #------------------------------------------------------------------------------
@@ -154,8 +152,17 @@ def format_pinyin(dictionary_entries):
             result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
     return result
 
-def add_highlight(text):
-    return '<font color=red>' + text + '</font>'
+def add_highlight(text, colour):
+    return '<font color='+colour+'>'+text +'</font>'
+
+def add_missing_note_highlight(text):
+    return add_highlight(text, 'red')
+
+def add_unlearnt_note_highlight(text):
+    return add_highlight(text, 'blue')
+
+def note_is_learnt(note):
+    return False
 
 def format_decomposition(collection, decompositon):
     if len(decompositon) == 0:
@@ -163,8 +170,13 @@ def format_decomposition(collection, decompositon):
     result = ''
     for idx in xrange(0, len(decompositon)):
         component = decompositon[idx]
-        if not note_exists_for_mandarin(collection, component):
-            component = add_highlight(component)
+        component_notes = find_notes(collection, MANDARIN_FIELDS, component)
+        if len(component_notes) > 1:
+            raise MagicException('More than one note for "'+component+'"')
+        if len(component_notes) == 0:
+            component = add_missing_note_highlight(component)
+        elif not note_is_learnt(component_notes[0]):
+            component = add_unlearnt_note_highlight(component)
         if idx == 0:
             result += component
         else:
@@ -312,7 +324,7 @@ class MainObject:
         if cards_added == 0:
             errors.append(exception.MagicException(
                 'No cards were added for "' + text + '". ' +
-                "Try adding manaually for further clues."
+                "Try adding manually for further clues."
             ))
         errors.raise_if_not_empty()
 
