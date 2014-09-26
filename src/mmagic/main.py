@@ -14,3 +14,8 @@ def setup_editor_button(editor):
     main_object.setup_editor_buttons(editor)
 
 addHook("setupEditorButtons", setup_editor_button)
+
+def before_state_change(state, old_state):
+    print 'before_state_change:', state
+
+addHook("beforeStateChange", before_state_change)

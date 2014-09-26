@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 
+import operator
+
 from PyQt4 import QtGui
 from PyQt4.QtGui import QPushButton
+
 import aqt.utils
-from anki.notes import Note
+import anki.notes
 import anki.utils
 import mmagic.core.exception as exception
 import mmagic.zhonglib as zhonglib
@@ -159,10 +162,17 @@ def add_missing_note_highlight(text):
     return add_highlight(text, 'red')
 
 def add_unlearnt_note_highlight(text):
-    return add_highlight(text, 'blue')
+    return add_highlight(text, 'orange')
+
+def add_learnt_note_highlight(text):
+    return add_highlight(text, 'green')
 
 def note_is_learnt(note):
-    return False
+    card_types = [card.type for card in note.cards()]
+    # A card type of '2' means that the cards is in review state.
+    # Other possible values are 0 (new) and 1 (learning).
+    # See anki.note and ank.sched for details.
+    return reduce(operator.and_, map((lambda t: t == 2), card_types), True)
 
 def format_decomposition(collection, decompositon):
     if len(decompositon) == 0:
@@ -170,12 +180,14 @@ def format_decomposition(collection, decompositon):
     result = ''
     for idx in xrange(0, len(decompositon)):
         component = decompositon[idx]
-        component_notes = find_notes(collection, MANDARIN_FIELDS, component)
-        if len(component_notes) > 1:
+        component_note_ids = find_notes(collection, MANDARIN_FIELDS, component)
+        if len(component_note_ids) > 1:
             raise MagicException('More than one note for "'+component+'"')
-        if len(component_notes) == 0:
+        if len(component_note_ids) == 0:
             component = add_missing_note_highlight(component)
-        elif not note_is_learnt(component_notes[0]):
+        elif note_is_learnt(collection.getNote(component_note_ids[0])):
+            component = add_learnt_note_highlight(component)
+        else:
             component = add_unlearnt_note_highlight(component)
         if idx == 0:
             result += component
@@ -313,7 +325,7 @@ class MainObject:
         assert self.editor.note != None
         errors = exception.MultiException()
         model = self.editor.note.model()
-        note = Note(self.mw.col, model)
+        note = anki.notes.Note(self.mw.col, model)
         set_mandarin_field(note, text)
         try:
             self.populate_note(note)
