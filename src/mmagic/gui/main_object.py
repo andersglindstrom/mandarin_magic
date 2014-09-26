@@ -2,8 +2,9 @@
 
 from PyQt4 import QtGui
 from PyQt4.QtGui import QPushButton
-from aqt import mw, utils
+import aqt.utils
 from anki.notes import Note
+import anki.utils
 import mmagic.core.exception as exception
 import mmagic.zhonglib as zhonglib
 
@@ -46,30 +47,33 @@ def calculate_field_name(note, possible_fields):
 #------------------------------------------------------------------------------
 # Field access
 
-def get_field(note, fields, failIfEmpty=False):
+def get_field(note, fields, fail_if_empty=False, strip_html=True):
     result = note[calculate_field_name(note, fields)]
-    if failIfEmpty and len(result) == 0:
+    if fail_if_empty and len(result) == 0:
         field_name = calculate_field_name(note, fields)
         raise exception.MagicException(field_name + ' field is empty')
+    if strip_html:
+        result = anki.utils.stripHTML(result)
     return result
 
 def has_field(note, fields):
     return len(set(note.keys()) & fields) > 0
 
 def has_empty_field(note, fields):
-    return has_field(note, fields) and len(get_field(note, fields)) == 0
+    return has_field(note, fields)\
+            and len(get_field(note, fields, strip_html=True)) == 0
 
 def set_field(note, fields, value):
     note[calculate_field_name(note, fields)] = value
 
-def get_mandarin_word(note, failIfEmpty=False):
-    return get_field(note, MANDARIN_FIELDS, failIfEmpty)
+def get_mandarin_word(note, fail_if_empty=False):
+    return get_field(note, MANDARIN_FIELDS, fail_if_empty)
 
 def set_mandarin_field(note, value):
     set_field(note, MANDARIN_FIELDS, value)
 
-def get_english_definition(note, failIfEmpty=False):
-    return get_field(note, ENGLISH_FIELDS, failIfEmpty)
+def get_english_definition(note, fail_if_empty=False):
+    return get_field(note, ENGLISH_FIELDS, fail_if_empty)
 
 def has_english_field(note):
     return has_field(note, ENGLISH_FIELDS)
@@ -98,8 +102,8 @@ def has_empty_decomposition_field(note):
 def set_decomposition_field(note, value):
     set_field(note, DECOMPOSITION_FIELDS, value)
 
-def get_decomposition_field(note, failIfEmpty=False):
-    return get_field(note, DECOMPOSITION_FIELDS, failIfEmpty)
+def get_decomposition_field(note, fail_if_empty=False):
+    return get_field(note, DECOMPOSITION_FIELDS, fail_if_empty)
 
 #------------------------------------------------------------------------------
 # Note search
@@ -153,9 +157,6 @@ def format_pinyin(dictionary_entries):
 def add_highlight(text):
     return '<font color=red>' + text + '</font>'
 
-def remove_highlight(text):
-    return text.replace('<font color=red>', '').replace('</font>', '')
-
 def format_decomposition(collection, decompositon):
     if len(decompositon) == 0:
         return 'None'
@@ -170,8 +171,10 @@ def format_decomposition(collection, decompositon):
             result += ', ' + component
     return result
 
-def unformat_decomposition(decompositon):
-    return [remove_highlight(x.strip().rstrip()) for x in decompositon.split(',')]
+# Returns the decomposition components as a list
+def get_decomposition_list(note):
+    field = get_decomposition_field(note)
+    return [anki.utils.stripHTML(x.strip().rstrip()) for x in field.split(',')]
 
 # exception must be an instance of MagicException or its subclasses
 def show_error(exception):
@@ -183,14 +186,14 @@ def show_error(exception):
         return
     # Single error only
     if len(all_messages) == 1:
-        utils.showInfo(all_messages[0])
+        aqt.utils.showInfo(all_messages[0])
         return
     # Multiple errors
     display_message = "The following problems were encountered:<br>"
     # Prepend an ordinal to each message.
     for idx in xrange(len(all_messages)):
         display_message += "<br>" + str(idx+1) + ". " + all_messages[idx]
-    utils.showInfo(display_message)
+    aqt.utils.showInfo(display_message)
 
 class MainObject:
 
@@ -209,7 +212,7 @@ class MainObject:
     def do_define_from_browser(self):
         selected_notes = self.browser.selectedNotes()
         if not selected_notes:
-            utils.showInfo("No notes selected.")
+            aqt.utils.showInfo("No notes selected.")
             return
         errors = exception.MultiException()
         for note_id in selected_notes:
@@ -221,8 +224,8 @@ class MainObject:
             finally:
                 note.flush()
         show_error(errors)
-        mw.reset(guiOnly=True)
-        utils.showInfo('Done.')
+        self.mw.reset(guiOnly=True)
+        aqt.utils.showInfo('Done.')
 
     def setup_button(self, editor, text, method_to_call):
         self.editor = editor
@@ -246,11 +249,18 @@ class MainObject:
             show_error(e)
         finally:
             self.editor.note.flush()
-            mw.reset(guiOnly = True)
+            self.mw.reset(guiOnly = True)
+
+    def refresh_decomposition_field(self, note):
+        decomposition = get_decomposition_list(note)
+        set_decomposition_field(\
+            note,\
+            format_decomposition(self.mw.col, decomposition\
+        ))
 
     def populate_note(self, note):
         # Extract 漢字 from card
-        mandarin_word = get_mandarin_word(note, failIfEmpty=True)
+        mandarin_word = get_mandarin_word(note, fail_if_empty=True)
 
         # In the following, we want to populate as many fields as possible
         # even if errors occur on previous field.  The following object
@@ -273,37 +283,38 @@ class MainObject:
             if has_empty_pinyin_field(note):
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
 
-        # Can decompose single characaters only just now
-        print 'Decomposition field:"' + get_decomposition_field(note) + '"'
         if has_empty_decomposition_field(note):
             try:
                 decompositon = zhonglib.decompose(mandarin_word)
-                print 'decompositon:',decompositon
                 set_decomposition_field(\
                     note,\
                     format_decomposition(self.mw.col, decompositon\
                 ))
-            except MagicException as e:
+            except exception.MagicException as e:
                 errors.append(e)
         else:
-            print 'Decomposition field is not empty'
+            self.refresh_decomposition_field(note)
 
-        if len(errors) > 0:
-            raise errors
+        errors.raise_if_not_empty()
     
     def add_mandarin_note(self, text):
         assert self.editor.note != None
+        errors = exception.MultiException()
         model = self.editor.note.model()
         note = Note(self.mw.col, model)
         set_mandarin_field(note, text)
-        print 'note.isDupeOrEmpty (1):', note.dupeOrEmpty()
-        templates = mw.col.findTemplates(note)
-        print 'templates:',templates
-        self.populate_note(note)
+        try:
+            self.populate_note(note)
+        except exception.MagicException as e:
+            errors.append(e)
         # The following will flush the note
-        cards_added = mw.col.addNote(note)
-        print 'cards_added:', cards_added
-        print 'note.isDupeOrEmpty (2):', note.dupeOrEmpty()
+        cards_added = self.mw.col.addNote(note)
+        if cards_added == 0:
+            errors.append(exception.MagicException(
+                'No cards were added for "' + text + '". ' +
+                "Try adding manaually for further clues."
+            ))
+        errors.raise_if_not_empty()
 
     def from_editor_add_missing_cards(self):
         assert self.editor.note != None
@@ -313,25 +324,20 @@ class MainObject:
 
         # Add a note for every composition component that doesn't yet
         # have one.
-        mandarin_word = get_mandarin_word(note, failIfEmpty=True)
-        decomposition = zhonglib.decompose(mandarin_word)
-        print 'decomposition:', decomposition
+        mandarin_word = get_mandarin_word(note, fail_if_empty=True)
+        decomposition = get_decomposition_list(note)
         errors = exception.MultiException()
         for component in decomposition:
             if not note_exists_for_mandarin(self.mw.col, component):
                 try:
-                    print 'Adding note for "%s"' % component
                     self.add_mandarin_note(component)
                 except exception.MagicException as e:
-                    print e
                     errors.append(e)
 
-        # Have to reformat decompositon field.
-        set_decomposition_field(\
-            note,\
-            format_decomposition(self.mw.col, decomposition\
-        ))
+        # Missing components (may) have been added.  Refresh decomposition
+        # field to reflect this.
+        self.refresh_decomposition_field(note)
         note.flush()
-        mw.reset(guiOnly = True)
+        self.mw.reset(guiOnly = True)
 
         show_error(errors)
