@@ -16,6 +16,7 @@ MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin', '
 ENGLISH_FIELDS=frozenset({'Back', 'English', 'Meaning'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
+MEASURE_WORD_FIELDS=frozenset({'Measure Word', 'Classifier', u'量詞'})
 
 #------------------------------------------------------------------------------
 #
@@ -28,21 +29,22 @@ DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
 def calculate_field_name(note, possible_fields):
     # Have to make this is a mutable set. Hence the explicit construction.
     candidates = set(possible_fields & set(note.keys()))
+    print 'calculate_field_name (%s): keys: %s candidates: %s'%(possible_fields,note.keys(),candidates)
     if len(candidates) > 1:
         note_type = note.model()['name']
         message ='Note type "' + note_type + '" has the following fields: '
-        message += candidates.pop()
+        message += '"%s"'%candidates.pop()
         while len(candidates) > 0:
-            message += ", " + candidates.pop()
+            message += ', "%s"'%candidates.pop()
         message += '. It should have at most one of them.'
         raise exception.MagicException(message)
     if len(candidates) == 0:
         note_type = note.model()['name']
         message = 'Note type "' + note_type + '" does not have any of the following fields: '
         field_set = set(possible_fields)
-        message += field_set.pop()
+        message += '"%s"'%field_set.pop()
         while len(field_set) > 0:
-            message += ', ' + field_set.pop()
+            message += ', "%s"'%field_set.pop()
         message += '. It should have one of them.'
         raise exception.MagicException(message)
     return candidates.pop()
@@ -96,6 +98,12 @@ def has_empty_pinyin_field(note):
 def set_pinyin_field(note, value):
     set_field(note, PINYIN_FIELDS, value)
 
+def has_empty_measure_word_field(note):
+    return has_empty_field(note, MEASURE_WORD_FIELDS)
+
+def set_measure_word_field(note, value):
+    set_field(note, MEASURE_WORD_FIELDS, value)
+
 def has_decomposition_field(note):
     return has_field(note, DECOMPOSITION_FIELDS)
 
@@ -124,6 +132,16 @@ def note_exists_for_mandarin(collection, word):
 
 #------------------------------------------------------------------------------
 # Formatting routines
+
+def format_list(the_list):
+    if len(the_list) == 0:
+        return ''
+    result = ''
+    assert len(the_list) > 0
+    result += the_list[0]
+    for idx in xrange(1, len(the_list)):
+        result += ',' + the_list[idx]
+    return result
 
 def format_entry_meaning(entry):
     result = entry.meaning[0]
@@ -155,6 +173,37 @@ def format_pinyin(dictionary_entries):
             result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
     return result
 
+def format_entry_measure_words(is_first, ordinal, dictionary_entry):
+    measure_words = dictionary_entry.traditional_measure_words
+    print 'format_entry_measure_words: measure_words="'+str(measure_words)+'"'
+    print 'is_first:', is_first
+    if len(measure_words) == 0:
+        return ''
+    result = ''
+    if not is_first:
+        result += '<br>'
+    result += '[' + str(ordinal) + '] ' + format_list(measure_words)
+    return result
+
+def format_measure_words(dictionary_entries):
+    print 'format_measure_words for "%s"'%dictionary_entries[0].traditional
+    if len(dictionary_entries) == 1:
+        result = format_list(dictionary_entries[0].traditional_measure_words)
+    else:
+        # Each goes on a separate line with an integer identifier that matches
+        # that in English field.
+        result = ''
+        is_first = True
+        for idx in xrange(0, len(dictionary_entries)):
+            formatted_measure_words = format_entry_measure_words(\
+                is_first,\
+                idx+1,\
+                dictionary_entries[idx]
+            )
+            result += formatted_measure_words
+            is_first = len(formatted_measure_words) == 0
+    return result
+
 def add_highlight(text, colour):
     return '<font color='+colour+'>'+text +'</font>'
 
@@ -182,7 +231,7 @@ def format_decomposition(collection, decompositon):
         component = decompositon[idx]
         component_note_ids = find_notes(collection, MANDARIN_FIELDS, component)
         if len(component_note_ids) > 1:
-            raise MagicException('More than one note for "'+component+'"')
+            raise exception.MagicException('More than one note for "'+component+'"')
         if len(component_note_ids) == 0:
             component = add_missing_note_highlight(component)
         elif note_is_learnt(collection.getNote(component_note_ids[0])):
@@ -307,6 +356,10 @@ class MainObject:
             if has_empty_pinyin_field(note):
                 set_pinyin_field(note, format_pinyin(dictionary_entries))
 
+            # Add 量詞
+            if has_empty_measure_word_field(note):
+                set_measure_word_field(note, format_measure_words(dictionary_entries))
+
         if has_empty_decomposition_field(note):
             try:
                 decompositon = zhonglib.decompose(mandarin_word)
@@ -316,6 +369,8 @@ class MainObject:
                 ))
             except exception.MagicException as e:
                 errors.append(e)
+            except zhonglib.ZhonglibException as e:
+                errors.append(exception.MagicException(str(e)))
         else:
             self.refresh_decomposition_field(note)
 
