@@ -223,12 +223,13 @@ def note_is_learnt(note):
     # See anki.note and ank.sched for details.
     return reduce(operator.and_, map((lambda t: t == 2), card_types), True)
 
-def format_decomposition(collection, decompositon):
-    if len(decompositon) == 0:
+def format_decomposition(collection, decomposition):
+    if len(decomposition) == 0:
         return 'None'
     result = ''
-    for idx in xrange(0, len(decompositon)):
-        component = decompositon[idx]
+    for idx in xrange(0, len(decomposition)):
+        component = decomposition[idx]
+        # Find the note that contains the given component
         component_note_ids = find_notes(collection, MANDARIN_FIELDS, component)
         if len(component_note_ids) > 1:
             raise exception.MagicException('More than one note for "'+component+'"')
@@ -362,10 +363,10 @@ class MainObject:
 
         if has_empty_decomposition_field(note):
             try:
-                decompositon = zhonglib.decompose(mandarin_word)
+                decomposition = zhonglib.decompose(mandarin_word)
                 set_decomposition_field(\
                     note,\
-                    format_decomposition(self.mw.col, decompositon\
+                    format_decomposition(self.mw.col, decomposition\
                 ))
             except exception.MagicException as e:
                 errors.append(e)
