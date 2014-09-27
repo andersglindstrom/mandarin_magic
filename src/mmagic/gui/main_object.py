@@ -98,8 +98,14 @@ def has_empty_pinyin_field(note):
 def set_pinyin_field(note, value):
     set_field(note, PINYIN_FIELDS, value)
 
+def has_measure_word_field(note):
+    return has_field(note, MEASURE_WORD_FIELDS)
+
 def has_empty_measure_word_field(note):
     return has_empty_field(note, MEASURE_WORD_FIELDS)
+
+def get_measure_word_field(note):
+    return get_field(note, MEASURE_WORD_FIELDS, note)
 
 def set_measure_word_field(note, value):
     set_field(note, MEASURE_WORD_FIELDS, value)
@@ -326,9 +332,13 @@ class MainObject:
         highlit_words = tuple(map(lambda w: self.add_note_mode_highlight(w), words))
         return pattern%highlit_words
 
-    def refresh_decomposition_field(self, note):
-        field = get_decomposition_field(note)
-        set_decomposition_field(note, self.highlight_character_mode(field))
+    def refresh_mode_hightlights(self, note):
+        if has_decomposition_field(note):
+            field = get_decomposition_field(note)
+            set_decomposition_field(note, self.highlight_character_mode(field))
+        if has_measure_word_field(note):
+            field = get_measure_word_field(note)
+            set_measure_word_field(note, self.highlight_character_mode(field))
 
     def populate_note(self, note):
         # Extract 漢字 from card
@@ -371,7 +381,7 @@ class MainObject:
             except zhonglib.ZhonglibException as e:
                 errors.append(exception.MagicException(str(e)))
 
-        self.refresh_decomposition_field(note)
+        self.refresh_mode_hightlights(note)
         errors.raise_if_not_empty()
     
     def add_mandarin_note(self, text):
@@ -413,7 +423,7 @@ class MainObject:
 
         # Missing components (may) have been added.  Refresh decomposition
         # field to reflect this.
-        self.refresh_decomposition_field(note)
+        self.refresh_mode_hightlights(note)
         note.flush()
         self.mw.reset(guiOnly = True)
 
