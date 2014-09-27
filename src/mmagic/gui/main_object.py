@@ -140,7 +140,7 @@ def format_list(the_list):
     assert len(the_list) > 0
     result += the_list[0]
     for idx in xrange(1, len(the_list)):
-        result += ',' + the_list[idx]
+        result += ', ' + the_list[idx]
     return result
 
 def format_entry_meaning(entry):
@@ -223,27 +223,10 @@ def note_is_learnt(note):
     # See anki.note and ank.sched for details.
     return reduce(operator.and_, map((lambda t: t == 2), card_types), True)
 
-def format_decomposition(collection, decomposition):
+def format_decomposition(decomposition):
     if len(decomposition) == 0:
         return 'None'
-    result = ''
-    for idx in xrange(0, len(decomposition)):
-        component = decomposition[idx]
-        # Find the note that contains the given component
-        component_note_ids = find_notes(collection, MANDARIN_FIELDS, component)
-        if len(component_note_ids) > 1:
-            raise exception.MagicException('More than one note for "'+component+'"')
-        if len(component_note_ids) == 0:
-            component = add_missing_note_highlight(component)
-        elif note_is_learnt(collection.getNote(component_note_ids[0])):
-            component = add_learnt_note_highlight(component)
-        else:
-            component = add_unlearnt_note_highlight(component)
-        if idx == 0:
-            result += component
-        else:
-            result += ', ' + component
-    return result
+    return format_list(decomposition)
 
 # Returns the decomposition components as a list
 def get_decomposition_list(note):
@@ -325,12 +308,27 @@ class MainObject:
             self.editor.note.flush()
             self.mw.reset(guiOnly = True)
 
+    def add_note_mode_highlight(self, word):
+        # Find all notes that have the given word as the Mandarin field
+        note_ids = find_notes(self.mw.col, MANDARIN_FIELDS, word)
+        if len(note_ids) > 1:
+            raise exception.MagicException('More than one note for "'+word+'"')
+        if len(note_ids) == 0:
+            word = add_missing_note_highlight(word)
+        elif note_is_learnt(self.mw.col.getNote(note_ids[0])):
+            word = add_learnt_note_highlight(word)
+        else:
+            word = add_unlearnt_note_highlight(word)
+        return word
+
+    def highlight_character_mode(self, text):
+        pattern, words = zhonglib.extract_cjk(text)
+        highlit_words = tuple(map(lambda w: self.add_note_mode_highlight(w), words))
+        return pattern%highlit_words
+
     def refresh_decomposition_field(self, note):
-        decomposition = get_decomposition_list(note)
-        set_decomposition_field(\
-            note,\
-            format_decomposition(self.mw.col, decomposition\
-        ))
+        field = get_decomposition_field(note)
+        set_decomposition_field(note, self.highlight_character_mode(field))
 
     def populate_note(self, note):
         # Extract 漢字 from card
@@ -366,15 +364,14 @@ class MainObject:
                 decomposition = zhonglib.decompose(mandarin_word)
                 set_decomposition_field(\
                     note,\
-                    format_decomposition(self.mw.col, decomposition\
+                    format_decomposition(decomposition\
                 ))
             except exception.MagicException as e:
                 errors.append(e)
             except zhonglib.ZhonglibException as e:
                 errors.append(exception.MagicException(str(e)))
-        else:
-            self.refresh_decomposition_field(note)
 
+        self.refresh_decomposition_field(note)
         errors.raise_if_not_empty()
     
     def add_mandarin_note(self, text):
