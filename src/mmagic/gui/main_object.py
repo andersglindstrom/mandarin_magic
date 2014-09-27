@@ -29,7 +29,6 @@ MEASURE_WORD_FIELDS=frozenset({'Measure Word', 'Classifier', u'量詞'})
 def calculate_field_name(note, possible_fields):
     # Have to make this is a mutable set. Hence the explicit construction.
     candidates = set(possible_fields & set(note.keys()))
-    print 'calculate_field_name (%s): keys: %s candidates: %s'%(possible_fields,note.keys(),candidates)
     if len(candidates) > 1:
         note_type = note.model()['name']
         message ='Note type "' + note_type + '" has the following fields: '
@@ -105,7 +104,7 @@ def has_empty_measure_word_field(note):
     return has_empty_field(note, MEASURE_WORD_FIELDS)
 
 def get_measure_word_field(note):
-    return get_field(note, MEASURE_WORD_FIELDS, note)
+    return get_field(note, MEASURE_WORD_FIELDS)
 
 def set_measure_word_field(note, value):
     set_field(note, MEASURE_WORD_FIELDS, value)
@@ -181,8 +180,6 @@ def format_pinyin(dictionary_entries):
 
 def format_entry_measure_words(is_first, ordinal, dictionary_entry):
     measure_words = dictionary_entry.traditional_measure_words
-    print 'format_entry_measure_words: measure_words="'+str(measure_words)+'"'
-    print 'is_first:', is_first
     if len(measure_words) == 0:
         return ''
     result = ''
@@ -192,7 +189,6 @@ def format_entry_measure_words(is_first, ordinal, dictionary_entry):
     return result
 
 def format_measure_words(dictionary_entries):
-    print 'format_measure_words for "%s"'%dictionary_entries[0].traditional
     if len(dictionary_entries) == 1:
         result = format_list(dictionary_entries[0].traditional_measure_words)
     else:
@@ -237,13 +233,24 @@ def format_decomposition(decomposition):
 # Returns the decomposition components as a list
 def get_decomposition_list(note):
     field = get_decomposition_field(note)
-    return [anki.utils.stripHTML(x.strip().rstrip()) for x in field.split(',')]
+    field = anki.utils.stripHTML(field.strip().rstrip())
+    if field == 'None':
+        return []
+    pattern, words = zhonglib.extract_cjk(field)
+    return list(words)
+
+def get_measure_word_list(note):
+    field = get_measure_word_field(note)
+    field = anki.utils.stripHTML(field.strip().rstrip())
+    if len(field) == 0:
+        return []
+    pattern, words = zhonglib.extract_cjk(field)
+    return list(words)
 
 # exception must be an instance of MagicException or its subclasses
 def show_error(exception):
     # Use a set to avoid duplicates. Use a list to support indexing.
     all_messages = list(set(exception.get_message_list()))
-    print 'all_messages:', all_messages
     # No Messages
     if len(all_messages) == 0:
         return
@@ -406,18 +413,21 @@ class MainObject:
     def from_editor_add_missing_cards(self):
         assert self.editor.note != None
         note = self.editor.note
-        if not has_decomposition_field(note):
-            raise exception.MagicException("Note does not have a decomposition field.")
 
         # Add a note for every composition component that doesn't yet
         # have one.
-        mandarin_word = get_mandarin_word(note, fail_if_empty=True)
-        decomposition = get_decomposition_list(note)
+        dependencies = []
+        if has_decomposition_field(note):
+            dependencies += get_decomposition_list(note)
+        if has_measure_word_field(note):
+            dependencies += get_measure_word_list(note)
+
+        print 'dependencies:',dependencies
         errors = exception.MultiException()
-        for component in decomposition:
-            if not note_exists_for_mandarin(self.mw.col, component):
+        for dependency in dependencies:
+            if not note_exists_for_mandarin(self.mw.col, dependency):
                 try:
-                    self.add_mandarin_note(component)
+                    self.add_mandarin_note(dependency)
                 except exception.MagicException as e:
                     errors.append(e)
 
