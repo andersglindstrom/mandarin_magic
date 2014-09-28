@@ -166,16 +166,21 @@ def format_english(dictionary_entries):
             result += '<br>['+str(id)+'] ' + format_entry_meaning(dictionary_entries[idx])
     return result
 
-def format_pinyin(dictionary_entries):
+def format_pinyin(text):
+    #print 'pinyin_vector:',zhonglib.parse_cedict_pinyin(text)
+    return zhonglib.format_pinyin_sequence(zhonglib.parse_cedict_pinyin(text))
+    #return text
+
+def format_pinyin_list(dictionary_entries):
     if len(dictionary_entries) == 1:
-        result = dictionary_entries[0].pinyin
+        result = format_pinyin(dictionary_entries[0].pinyin)
     else:
         # Each goes on a separate line with an integer identifier that matches
         # that in English field.
-        result = '[1] ' + dictionary_entries[0].pinyin
+        result = '[1] ' + format_pinyin(dictionary_entries[0].pinyin)
         for idx in xrange(1, len(dictionary_entries)):
             id = idx+1
-            result += '<br>['+str(id)+'] ' + dictionary_entries[idx].pinyin
+            result += '<br>['+str(id)+'] ' + format_pinyin(dictionary_entries[idx].pinyin)
     return result
 
 def format_entry_measure_words(is_first, ordinal, dictionary_entry):
@@ -370,7 +375,7 @@ class MainObject:
 
             # Add 拼音
             if has_empty_pinyin_field(note):
-                set_pinyin_field(note, format_pinyin(dictionary_entries))
+                set_pinyin_field(note, format_pinyin_list(dictionary_entries))
 
             # Add 量詞
             if has_empty_measure_word_field(note):
