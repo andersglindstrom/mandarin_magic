@@ -70,7 +70,7 @@ def has_empty_field(note, fields):
 def set_field(note, fields, value):
     note[calculate_field_name(note, fields)] = value
 
-def get_mandarin_word(note, fail_if_empty=False):
+def get_mandarin_text(note, fail_if_empty=False):
     return get_field(note, MANDARIN_FIELDS, fail_if_empty)
 
 def set_mandarin_field(note, value):
@@ -167,9 +167,10 @@ def format_english(dictionary_entries):
     return result
 
 def format_pinyin(text):
-    #print 'pinyin_vector:',zhonglib.parse_cedict_pinyin(text)
+    print 'text:',text
+    print 'pinyin_vector:',zhonglib.parse_cedict_pinyin(text)
     return zhonglib.format_pinyin_sequence(zhonglib.parse_cedict_pinyin(text))
-    #return text
+    return text
 
 def format_pinyin_list(dictionary_entries):
     if len(dictionary_entries) == 1:
@@ -326,35 +327,43 @@ class MainObject:
             self.editor.note.flush()
             self.mw.reset(guiOnly = True)
 
-    def add_note_mode_highlight(self, word):
+    def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
         note_ids = find_notes(self.mw.col, MANDARIN_FIELDS, word)
-        if len(note_ids) > 1:
-            raise exception.MagicException('More than one note for "'+word+'"')
         if len(note_ids) == 0:
             word = add_missing_note_highlight(word)
-        elif note_is_learnt(self.mw.col.getNote(note_ids[0])):
-            word = add_learnt_note_highlight(word)
         else:
-            word = add_unlearnt_note_highlight(word)
+            # Find out whether each note is learnt or not.
+            notes_are_learnt = map(
+                lambda note_id: note_is_learnt(self.mw.col.getNote(note_id)),
+                note_ids
+            )
+            # Are they all learnt?
+            all_learnt = reduce(operator.and_, notes_are_learnt, True)
+            if all_learnt:
+                word = add_learnt_note_highlight(word)
+            else:
+                word = add_unlearnt_note_highlight(word)
         return word
 
-    def highlight_character_mode(self, text):
+    def add_learning_status_colour(self, text):
         pattern, words = zhonglib.extract_cjk(text)
-        highlit_words = tuple(map(lambda w: self.add_note_mode_highlight(w), words))
+        highlit_words = tuple(
+            map(lambda w: self.add_learning_status_colour_to_word(w), words)
+        )
         return pattern%highlit_words
 
-    def refresh_mode_hightlights(self, note):
+    def refresh_learning_status_colour(self, note):
         if has_decomposition_field(note):
             field = get_decomposition_field(note)
-            set_decomposition_field(note, self.highlight_character_mode(field))
+            set_decomposition_field(note, self.add_learning_status_colour(field))
         if has_measure_word_field(note):
             field = get_measure_word_field(note)
-            set_measure_word_field(note, self.highlight_character_mode(field))
+            set_measure_word_field(note, self.add_learning_status_colour(field))
 
     def populate_note(self, note):
         # Extract 漢字 from card
-        mandarin_word = get_mandarin_word(note, fail_if_empty=True)
+        mandarin_text = get_mandarin_text(note, fail_if_empty=True)
 
         # In the following, we want to populate as many fields as possible
         # even if errors occur on previous field.  The following object
@@ -362,38 +371,70 @@ class MainObject:
         # as an exception if it actually has errors.
         errors = exception.MultiException()
 
-        # Get dictionary entries
-        dictionary_entries = self.dictionary.find(mandarin_word)
-        if len(dictionary_entries) == 0:
-            message = 'No dictionary entry for "' + mandarin_word + '"'
-            errors.append(exception.MagicException(message))
+        try:
+            # In the following, we do two things. One, we work out whether
+            # the text can possibly be in the dictionary or not.  If it's a
+            # sentence, it cannot.  Second, we split the text into components.
+            # This can happen no matter what the text is.  If it's a character,
+            # it is split into sub-characters.  If it's a word, it's split into
+            # characters.  If it's a sentence, it is is split into words.
+            can_lookup_dictionary = True
+            if len(mandarin_text) == 1:
+                can_lookup_dictionary = True
+                decomposition = zhonglib.decompose_character(mandarin_text)
+            else:
+                words = zhonglib.segment(mandarin_text)
+                if len(words) == 1:
+                    can_lookup_dictionary = True
+                    decomposition = zhonglib.decompose_word(mandarin_text)
+                else:
+                    can_lookup_dictionary = False
+                    decomposition = words
+        except zhonglib.ZhonglibException as e:
+            decomposition = None
+            can_lookup_dictionary = True
+            errors.append(exception.MagicException(str(e)))
 
-        if len(dictionary_entries) > 0:
-            # Add Englih
-            if has_empty_english_field(note):
-                set_english_field(note, format_english(dictionary_entries))
+        if can_lookup_dictionary:
+            # The Mandarin text is either a word or a character. We can look
+            # it up in the dictionary. Otherwise, it's a sentence, so we
+            # can't look it up.
 
-            # Add 拼音
-            if has_empty_pinyin_field(note):
-                set_pinyin_field(note, format_pinyin_list(dictionary_entries))
+            # Get dictionary entries
+            dictionary_entries = self.dictionary.find(
+                mandarin_text, traditional=True, simplified=True, meaning=False)
 
-            # Add 量詞
-            if has_empty_measure_word_field(note):
-                set_measure_word_field(note, format_measure_words(dictionary_entries))
+            if len(dictionary_entries) == 0:
+                message = 'No dictionary entry for "' + mandarin_text + '"'
+                errors.append(exception.MagicException(message))
 
-        if has_empty_decomposition_field(note):
+            if len(dictionary_entries) > 0:
+                # Add Englih
+                if has_empty_english_field(note):
+                    set_english_field(note, format_english(dictionary_entries))
+
+                # Add 拼音
+                if has_empty_pinyin_field(note):
+                    set_pinyin_field(note, format_pinyin_list(dictionary_entries))
+
+                # Add 量詞
+                if has_empty_measure_word_field(note):
+                    set_measure_word_field(note, format_measure_words(dictionary_entries))
+
+
+        if decomposition and has_empty_decomposition_field(note):
             try:
-                decomposition = zhonglib.decompose(mandarin_word)
                 set_decomposition_field(\
                     note,\
                     format_decomposition(decomposition\
                 ))
             except exception.MagicException as e:
                 errors.append(e)
-            except zhonglib.ZhonglibException as e:
-                errors.append(exception.MagicException(str(e)))
 
-        self.refresh_mode_hightlights(note)
+        # Whether the fields previously existed or they have just been added,
+        # we want to set the colour of words according to their current learning
+        # status.
+        self.refresh_learning_status_colour(note)
         errors.raise_if_not_empty()
     
     def add_mandarin_note(self, text):
@@ -436,9 +477,9 @@ class MainObject:
                 except exception.MagicException as e:
                     errors.append(e)
 
-        # Missing components (may) have been added.  Refresh decomposition
-        # field to reflect this.
-        self.refresh_mode_hightlights(note)
+        # Missing components (may) have been added. Have to update the colour
+        # of words in the text to reflect this.
+        self.refresh_learning_status_colour(note)
         note.flush()
         self.mw.reset(guiOnly = True)
 
