@@ -283,7 +283,11 @@ class MainObject:
 
     def setup_browser_menu(self, browser):
         self.browser = browser
-        self.browser.form.menuEdit.addAction(self.do_define_action)
+
+        # Disable this for now. I think it's more trouble than it's worth.
+        # It's safer to populate each note one-by-one.
+
+        #self.browser.form.menuEdit.addAction(self.do_define_action)
 
     def do_define_from_browser(self):
         selected_notes = self.browser.selectedNotes()
@@ -298,6 +302,9 @@ class MainObject:
             except exception.MagicException as e:
                 errors.append(e)
             finally:
+                # Even if there's an error, flush the note.  Usually, the
+                # error only pertains to one problematic field.  The other
+                # fields are okay.
                 note.flush()
         show_error(errors)
         self.mw.reset(guiOnly=True)
@@ -324,8 +331,9 @@ class MainObject:
 
     def from_editor_populate_note(self):
         try:
-            self.populate_note(self.note())
-            self.note().flush()
+            note = self.note()
+            self.populate_note(note)
+            note.flush()
         except exception.MagicException as e:
             show_error(e)
         finally:
@@ -365,6 +373,9 @@ class MainObject:
             field = get_measure_word_field(note)
             set_measure_word_field(note, self.add_learning_status_colour(field))
 
+    # This function does not flush the note. 'flush' has to be called (either
+    # directly or indirectly) from the caller. See 'add_mandarin_note' for
+    # the only instance where it is called indirectly.
     def populate_note(self, note):
         # Extract 漢字 from card
         mandarin_text = get_mandarin_text(note, fail_if_empty=True)
@@ -451,7 +462,13 @@ class MainObject:
             self.populate_note(note)
         except exception.MagicException as e:
             errors.append(e)
-        # The following will flush the note
+        # The following will flush the note which is why we don't have to
+        # do it ourselves. In fact, we have to avoid it doing it ourselves
+        # because col.addNote() may fail if no cards are produced.  If this
+        # is the case, then the note must not be flushed because the database
+        # ends up with a note with no cards, which will not show up on the
+        # browser.  In that case, you don't even know that there's a dodgy
+        # note unless you dive directly into the database.
         cards_added = self.mw.col.addNote(note)
         if cards_added == 0:
             errors.append(exception.MagicException(
