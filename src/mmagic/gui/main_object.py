@@ -265,7 +265,7 @@ def show_error(exception):
         aqt.utils.showInfo(all_messages[0])
         return
     # Multiple errors
-    display_message = "The following problems were encountered:<br>"
+    display_message = u"The following problems were encountered:<br>"
     # Prepend an ordinal to each message.
     for idx in xrange(len(all_messages)):
         display_message += "<br>" + str(idx+1) + ". " + all_messages[idx]
@@ -314,17 +314,21 @@ class MainObject:
         editor.iconsBox.addWidget(button)
 
     def setup_editor_buttons(self, editor):
-        self.setup_button(editor, 'Z', self.from_editor_populate_note)
+        self.setup_button(editor, 'P', self.from_editor_populate_note)
         self.setup_button(editor, '+', self.from_editor_add_missing_cards)
+
+    def note(self):
+        result = self.browser.card.note()
+        assert result != None
+        return result
 
     def from_editor_populate_note(self):
         try:
-            assert self.editor.note != None
-            self.populate_note(self.editor.note)
+            self.populate_note(self.note())
+            self.note().flush()
         except exception.MagicException as e:
             show_error(e)
         finally:
-            self.editor.note.flush()
             self.mw.reset(guiOnly = True)
 
     def add_learning_status_colour_to_word(self, word):
@@ -384,6 +388,7 @@ class MainObject:
                 decomposition = zhonglib.decompose_character(mandarin_text)
             else:
                 words = zhonglib.segment(mandarin_text)
+                print 'words:',words
                 if len(words) == 1:
                     can_lookup_dictionary = True
                     decomposition = zhonglib.decompose_word(mandarin_text)
@@ -393,7 +398,7 @@ class MainObject:
         except zhonglib.ZhonglibException as e:
             decomposition = None
             can_lookup_dictionary = True
-            errors.append(exception.MagicException(str(e)))
+            errors.append(exception.MagicException(unicode(e)))
 
         if can_lookup_dictionary:
             # The Mandarin text is either a word or a character. We can look
@@ -438,9 +443,8 @@ class MainObject:
         errors.raise_if_not_empty()
     
     def add_mandarin_note(self, text):
-        assert self.editor.note != None
         errors = exception.MultiException()
-        model = self.editor.note.model()
+        model = self.note().model()
         note = anki.notes.Note(self.mw.col, model)
         set_mandarin_field(note, text)
         try:
@@ -457,9 +461,7 @@ class MainObject:
         errors.raise_if_not_empty()
 
     def from_editor_add_missing_cards(self):
-        assert self.editor.note != None
-        note = self.editor.note
-
+        note = self.note()
         # Add a note for every composition component that doesn't yet
         # have one.
         dependencies = []
