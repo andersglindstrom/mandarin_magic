@@ -167,10 +167,7 @@ def format_english(dictionary_entries):
     return result
 
 def format_pinyin(text):
-    print 'text:',text
-    print 'pinyin_vector:',zhonglib.parse_cedict_pinyin(text)
     return zhonglib.format_pinyin_sequence(zhonglib.parse_cedict_pinyin(text))
-    return text
 
 def format_pinyin_list(dictionary_entries):
     if len(dictionary_entries) == 1:
