@@ -411,7 +411,7 @@ class MainObject:
         if is_sentence:
             if has_empty_english_field(note):
                 set_english_field(note, 'Cannot use dictionary to look up sentences.')
-            # Should also set pinyin her from decomposition
+            # Should also set pinyin here from decomposition
         else:
             # The Mandarin text is either a word or a character. We can look
             # it up in the dictionary.
