@@ -307,28 +307,23 @@ class MainObject:
         self.mw.reset(guiOnly=True)
         aqt.utils.showInfo('Done.')
 
-    def setup_button(self, editor, text, method_to_call):
-        self.editor = editor
+    def setup_button(self, editor, text, callback):
         button = QPushButton(editor.widget)
         button.setFixedHeight(20)
         button.setFixedWidth(20)
         button.setText(text)
-        button.clicked.connect(method_to_call)
+        button.clicked.connect(callback)
         button.setStyle(editor.plastiqueStyle)
         editor.iconsBox.addWidget(button)
 
     def setup_editor_buttons(self, editor):
-        self.setup_button(editor, 'P', self.from_editor_populate_note)
-        self.setup_button(editor, '+', self.from_editor_add_missing_cards)
+        self.editor = editor
+        self.setup_button(editor, 'P', lambda: self.from_editor_populate_note(editor))
+        self.setup_button(editor, '+', lambda: self.from_editor_add_missing_cards(editor))
 
-    def note(self):
-        result = self.browser.card.note()
-        assert result != None
-        return result
-
-    def from_editor_populate_note(self):
+    def from_editor_populate_note(self, editor):
         try:
-            note = self.note()
+            note = editor.note
             self.populate_note(note)
             note.flush()
         except exception.MagicException as e:
@@ -443,8 +438,6 @@ class MainObject:
                 ))
             except exception.MagicException as e:
                 errors.append(e)
-        else:
-            print 'Not setting decomposition: decomposition=%s has_empty_decomposition_field%s'%(decomposition, has_empty_decomposition_field(note))
 
         # Whether the fields previously existed or they have just been added,
         # we want to set the colour of words according to their current learning
@@ -476,8 +469,8 @@ class MainObject:
             ))
         errors.raise_if_not_empty()
 
-    def from_editor_add_missing_cards(self):
-        note = self.note()
+    def from_editor_add_missing_cards(self, editor):
+        note = editor.note()
         # Add a note for every composition component that doesn't yet
         # have one.
         dependencies = []
