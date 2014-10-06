@@ -148,22 +148,22 @@ def format_list(the_list):
         result += ', ' + the_list[idx]
     return result
 
-def format_entry_meaning(entry):
-    result = entry.meaning[0]
-    for idx in xrange(1, len(entry.meaning)):
+def format_entry_english(entry):
+    result = entry.english[0]
+    for idx in xrange(1, len(entry.english)):
         result += "; "
-        result += entry.meaning[idx]
+        result += entry.english[idx]
     return result
 
 def format_english(dictionary_entries):
     if len(dictionary_entries) == 1:
-        result = format_entry_meaning(dictionary_entries[0])
+        result = format_entry_english(dictionary_entries[0])
     else:
         # Each entry is put on a separate line with an integer identifier.
-        result = '[1] ' + format_entry_meaning(dictionary_entries[0])
+        result = '[1] ' + format_entry_english(dictionary_entries[0])
         for idx in xrange(1, len(dictionary_entries)):
             id = idx+1
-            result += '<br>['+str(id)+'] ' + format_entry_meaning(dictionary_entries[idx])
+            result += '<br>['+str(id)+'] ' + format_entry_english(dictionary_entries[idx])
     return result
 
 def format_pinyin(text):
@@ -393,32 +393,32 @@ class MainObject:
             # This can happen no matter what the text is.  If it's a character,
             # it is split into sub-characters.  If it's a word, it's split into
             # characters.  If it's a sentence, it is is split into words.
-            can_lookup_dictionary = True
+            is_sentence = False
             if len(mandarin_text) == 1:
-                can_lookup_dictionary = True
                 decomposition = zhonglib.decompose_character(mandarin_text)
             else:
-                words = zhonglib.segment(mandarin_text)
-                print 'words:',words
+                words = zhonglib.segment(mandarin_text, zhonglib.TRADITIONAL)
                 if len(words) == 1:
-                    can_lookup_dictionary = True
                     decomposition = zhonglib.decompose_word(mandarin_text)
                 else:
+                    is_sentence = True
                     can_lookup_dictionary = False
                     decomposition = words
         except zhonglib.ZhonglibException as e:
             decomposition = None
-            can_lookup_dictionary = True
             errors.append(exception.MagicException(unicode(e)))
 
-        if can_lookup_dictionary:
+        if is_sentence:
+            if has_empty_english_field(note):
+                set_english_field(note, 'Cannot use dictionary to look up sentences.')
+            # Should also set pinyin her from decomposition
+        else:
             # The Mandarin text is either a word or a character. We can look
-            # it up in the dictionary. Otherwise, it's a sentence, so we
-            # can't look it up.
+            # it up in the dictionary.
 
             # Get dictionary entries
             dictionary_entries = self.dictionary.find(
-                mandarin_text, traditional=True, simplified=True, meaning=False)
+                mandarin_text, zhonglib.TRADITIONAL, include_english=False)
 
             if len(dictionary_entries) == 0:
                 message = 'No dictionary entry for "' + mandarin_text + '"'
@@ -438,7 +438,7 @@ class MainObject:
                     set_measure_word_field(note, format_measure_words(dictionary_entries))
 
 
-        if decomposition and has_empty_decomposition_field(note):
+        if decomposition != None and has_empty_decomposition_field(note):
             try:
                 set_decomposition_field(\
                     note,\
@@ -446,6 +446,8 @@ class MainObject:
                 ))
             except exception.MagicException as e:
                 errors.append(e)
+        else:
+            print 'Not setting decomposition: decomposition=%s has_empty_decomposition_field%s'%(decomposition, has_empty_decomposition_field(note))
 
         # Whether the fields previously existed or they have just been added,
         # we want to set the colour of words according to their current learning
