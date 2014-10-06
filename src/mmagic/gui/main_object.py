@@ -318,12 +318,11 @@ class MainObject:
 
     def setup_editor_buttons(self, editor):
         self.editor = editor
-        self.setup_button(editor, 'P', lambda: self.from_editor_populate_note(editor))
-        self.setup_button(editor, '+', lambda: self.from_editor_add_missing_cards(editor))
+        self.setup_button(editor, 'P', lambda: self.populate_and_save_note(editor.note))
+        self.setup_button(editor, '+', lambda: self.add_missing_components(editor.note))
 
-    def from_editor_populate_note(self, editor):
+    def populate_and_save_note(self, note):
         try:
-            note = editor.note
             self.populate_note(note)
             note.flush()
         except exception.MagicException as e:
@@ -389,6 +388,7 @@ class MainObject:
             if len(mandarin_text) == 1:
                 decomposition = zhonglib.decompose_character(mandarin_text)
             else:
+                # When segmenting sentences, only use the traditional words.
                 words = zhonglib.segment(mandarin_text, zhonglib.TRADITIONAL)
                 if len(words) == 1:
                     decomposition = zhonglib.decompose_word(mandarin_text)
@@ -408,9 +408,10 @@ class MainObject:
             # The Mandarin text is either a word or a character. We can look
             # it up in the dictionary.
 
-            # Get dictionary entries
+            # Get dictionary entries. Some character components are only defined
+            # in the dictionary as simplifed, so we have to look in both.
             dictionary_entries = self.dictionary.find(
-                mandarin_text, zhonglib.TRADITIONAL, include_english=False)
+                mandarin_text, zhonglib.TRADITIONAL | zhonglib.SIMPLIFIED, include_english=False)
 
             if len(dictionary_entries) == 0:
                 message = 'No dictionary entry for "' + mandarin_text + '"'
@@ -445,9 +446,8 @@ class MainObject:
         self.refresh_learning_status_colour(note)
         errors.raise_if_not_empty()
     
-    def add_mandarin_note(self, text):
+    def add_mandarin_note(self, model, text):
         errors = exception.MultiException()
-        model = self.note().model()
         note = anki.notes.Note(self.mw.col, model)
         set_mandarin_field(note, text)
         try:
@@ -469,8 +469,10 @@ class MainObject:
             ))
         errors.raise_if_not_empty()
 
-    def from_editor_add_missing_cards(self, editor):
-        note = editor.note()
+    def add_missing_components(self, note):
+
+        print 'add_missing_components: note=%s', note
+
         # Add a note for every composition component that doesn't yet
         # have one.
         dependencies = []
@@ -479,12 +481,12 @@ class MainObject:
         if has_measure_word_field(note):
             dependencies += get_measure_word_list(note)
 
-        print 'dependencies:',dependencies
+        print 'add_missing_components: dependencies:',dependencies
         errors = exception.MultiException()
         for dependency in dependencies:
             if not note_exists_for_mandarin(self.mw.col, dependency):
                 try:
-                    self.add_mandarin_note(dependency)
+                    self.add_mandarin_note(note.model(), dependency)
                 except exception.MagicException as e:
                     errors.append(e)
 
