@@ -324,8 +324,15 @@ class MainObject:
                 note = self.mw.col.getNote(note_id)
                 mandarin_text = get_mandarin_text(note)
                 if len(mandarin_text) == 1:
-                    characters.add(mandarin_text)
-                    characters.update(self.get_transitive_dependencies(mandarin_text))
+                # Single character
+                    note_characters = [mandarin_text]
+                else:
+                    assert len(mandarin_text) > 1
+                    # A word or a sentence
+                    note_characters = get_decomposition_list(note)
+                for character in note_characters:
+                    characters.add(character)
+                    characters.update(self.get_transitive_dependencies(character))
         except exception.MagicException as e:
             errors.append(e)
 
