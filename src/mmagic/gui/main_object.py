@@ -9,7 +9,7 @@ import aqt.utils
 import anki.notes
 import anki.utils
 import mmagic.core.exception as exception
-import mmagic.zhonglib as zhonglib
+import mmagic.zhonglib as zl
 
 # All this stuff should be moved to core
 MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin', 'Radical'})
@@ -131,9 +131,11 @@ def find_notes(collection, field_set, value):
         result += notes
     return result
 
+def find_notes_for_word(collection, word):
+    return find_notes(collection, MANDARIN_FIELDS, word)
+
 def note_exists_for_mandarin(collection, word):
-    notes = find_notes(collection, MANDARIN_FIELDS, word)
-    return len(notes) > 0
+    return len(find_notes_for_word(collection, word)) > 0
 
 #------------------------------------------------------------------------------
 # Formatting routines
@@ -167,7 +169,7 @@ def format_english(dictionary_entries):
     return result
 
 def format_pinyin(text):
-    return zhonglib.format_pinyin_sequence(zhonglib.parse_cedict_pinyin(text))
+    return zl.format_pinyin_sequence(zl.parse_cedict_pinyin(text))
 
 def format_pinyin_list(dictionary_entries):
     if len(dictionary_entries) == 1:
@@ -233,13 +235,14 @@ def format_decomposition(decomposition):
         return 'None'
     return format_list(decomposition)
 
-# Returns the decomposition components as a list
+# Returns the decomposition components as a list. A new list is returned. It
+# can be modified by the client.
 def get_decomposition_list(note):
     field = get_decomposition_field(note)
     field = anki.utils.stripHTML(field.strip().rstrip())
     if field == 'None':
         return []
-    pattern, words = zhonglib.extract_cjk(field)
+    pattern, words = zl.extract_cjk(field)
     return list(words)
 
 def get_measure_word_list(note):
@@ -247,7 +250,7 @@ def get_measure_word_list(note):
     field = anki.utils.stripHTML(field.strip().rstrip())
     if len(field) == 0:
         return []
-    pattern, words = zhonglib.extract_cjk(field)
+    pattern, words = zl.extract_cjk(field)
     return list(words)
 
 # exception must be an instance of MagicException or its subclasses
@@ -272,22 +275,111 @@ class MainObject:
 
     def __init__(self, anki_main_window):
         self.mw = anki_main_window
-
-        self.do_define_action = QtGui.QAction("Define", self.mw)
-        self.do_define_action.triggered.connect(self.do_define_from_browser)
-
-        self.dictionary = zhonglib.standard_dictionary()
+        self.dictionary = zl.standard_dictionary()
 
     def setup_browser_menu(self, browser):
-        self.browser = browser
-
         # Disable this for now. I think it's more trouble than it's worth.
         # It's safer to populate each note one-by-one.
 
         #self.browser.form.menuEdit.addAction(self.do_define_action)
+        action = QtGui.QAction("Export to Skritter", self.mw)
+        action.triggered.connect(lambda: self.export_to_skritter(browser))
+        browser.form.menuEdit.addAction(action)
 
-    def do_define_from_browser(self):
-        selected_notes = self.browser.selectedNotes()
+    def get_transitive_dependencies(self, character, depth=0):
+        # There may be more than one note for this character.
+
+        #zl.print_debug(depth, 'get_transitive_dependencies: "%s"'%character)
+        note_ids = find_notes_for_word(self.mw.col, character)
+        if len(note_ids) > 1:
+            raise exception.MagicException('More than one not for "%s"'%character)
+        if len(note_ids) == 0:
+            raise exception.MagicException('No note for "%s"'%character)
+
+        note = self.mw.col.getNote(note_ids[0])
+        dependencies = get_decomposition_list(note)
+        result = list(dependencies)
+        for d in dependencies:
+            result += self.get_transitive_dependencies(d, depth+1)
+        return result
+
+    def export_to_skritter(self, browser):
+        # Generate the dependency graph and then sort topologically.
+
+        # Generate the dependency graph.
+        #
+        # We have to add all the selected characters and all the characters
+        # they depend on to the graph.
+
+        selected_notes = browser.selectedNotes()
+        if not selected_notes:
+            aqt.utils.showInfo("No notes selected.")
+            return
+        errors = exception.MultiException()
+
+        # First, find the set of all characters to upload.
+        characters = set()
+        try:
+            for note_id in selected_notes:
+                note = self.mw.col.getNote(note_id)
+                mandarin_text = get_mandarin_text(note)
+                if len(mandarin_text) == 1:
+                    characters.add(mandarin_text)
+                    characters.update(self.get_transitive_dependencies(mandarin_text))
+        except exception.MagicException as e:
+            errors.append(e)
+
+        show_error(errors)
+        if len(errors) > 0:
+            return
+
+        # Now, generate the dependency graph.
+        dependency_graph = {}
+        for character in characters:
+            note_ids = find_notes_for_word(self.mw.col, character)
+            if len(note_ids) > 1:
+                raise exception.MagicException('More than one not for "%s"'%character)
+            if len(note_ids) == 0:
+                raise exception.MagicException('No note for "%s"'%character)
+            note = self.mw.col.getNote(note_ids[0])
+            dependencies = get_decomposition_list(note)
+            dependency_graph[character] = dependencies
+
+        # Sort topologically
+        sorted_characters = zl.topological_sort(dependency_graph)
+
+        # Now copy characters to clipboad so that they can be pasted in to
+        # Skritter.
+
+        section_length = 200
+        while len(sorted_characters) > section_length:
+            section = sorted_characters[0:section_length]
+            sorted_characters = sorted_characters[section_length:]
+
+            text = unicode()
+            for c in section:
+                text += c + '\n'
+
+            clipboard = QtGui.QApplication.clipboard()
+            clipboard.setText(text)
+
+            msg = "%s characters copied to clipboard. There are %s characters remaining. Copy next section?"%(len(section),len(sorted_characters))
+            if not aqt.utils.askUser(msg, browser):
+                return
+
+        text = unicode()
+        for c in sorted_characters:
+            text += c + '\n'
+
+        clipboard = QtGui.QApplication.clipboard()
+        clipboard.setText(text)
+
+        msg = "%s characters copied to clipboard. There are no more characters."%len(sorted_characters)
+        aqt.utils.showInfo(msg, browser)
+        
+
+    def do_define_from_browser(self, browser):
+        selected_notes = browser.selectedNotes()
         if not selected_notes:
             aqt.utils.showInfo("No notes selected.")
             return
@@ -332,7 +424,7 @@ class MainObject:
 
     def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
-        note_ids = find_notes(self.mw.col, MANDARIN_FIELDS, word)
+        note_ids = find_notes_for_word(self.mw.col, word)
         if len(note_ids) == 0:
             word = add_missing_note_highlight(word)
         else:
@@ -350,7 +442,7 @@ class MainObject:
         return word
 
     def add_learning_status_colour(self, text):
-        pattern, words = zhonglib.extract_cjk(text)
+        pattern, words = zl.extract_cjk(text)
         highlit_words = tuple(
             map(lambda w: self.add_learning_status_colour_to_word(w), words)
         )
@@ -386,17 +478,17 @@ class MainObject:
             # characters.  If it's a sentence, it is is split into words.
             is_sentence = False
             if len(mandarin_text) == 1:
-                decomposition = zhonglib.decompose_character(mandarin_text)
+                decomposition = zl.decompose_character(mandarin_text)
             else:
                 # When segmenting sentences, only use the traditional words.
-                words = zhonglib.segment(mandarin_text, zhonglib.TRADITIONAL)
+                words = zl.segment(mandarin_text, zl.TRADITIONAL)
                 if len(words) == 1:
-                    decomposition = zhonglib.decompose_word(mandarin_text)
+                    decomposition = zl.decompose_word(mandarin_text)
                 else:
                     is_sentence = True
                     can_lookup_dictionary = False
                     decomposition = words
-        except zhonglib.ZhonglibException as e:
+        except zl.ZhonglibException as e:
             decomposition = None
             errors.append(exception.MagicException(unicode(e)))
 
@@ -411,7 +503,7 @@ class MainObject:
             # Get dictionary entries. Some character components are only defined
             # in the dictionary as simplifed, so we have to look in both.
             dictionary_entries = self.dictionary.find(
-                mandarin_text, zhonglib.TRADITIONAL | zhonglib.SIMPLIFIED, include_english=False)
+                mandarin_text, zl.TRADITIONAL | zl.SIMPLIFIED, include_english=False)
 
             if len(dictionary_entries) == 0:
                 message = 'No dictionary entry for "' + mandarin_text + '"'
