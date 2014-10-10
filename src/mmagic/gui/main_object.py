@@ -127,7 +127,7 @@ def get_decomposition_field(note, fail_if_empty=False):
 def find_notes(collection, field_set, value):
     result = []
     for field in field_set:
-        notes = collection.findNotes(field + ":" + value)
+        notes = collection.findNotes('%s:"%s"'%(field,value))
         result += notes
     return result
 
@@ -286,15 +286,15 @@ class MainObject:
         action.triggered.connect(lambda: self.export_to_skritter(browser))
         browser.form.menuEdit.addAction(action)
 
-    def get_transitive_dependencies(self, character, depth=0):
-        # There may be more than one note for this character.
+    def get_transitive_dependencies(self, word, depth=0):
+        # There may be more than one note for this word.
 
-        #zl.print_debug(depth, 'get_transitive_dependencies: "%s"'%character)
-        note_ids = find_notes_for_word(self.mw.col, character)
+        #zl.print_debug(depth, 'get_transitive_dependencies: "%s"'%word)
+        note_ids = find_notes_for_word(self.mw.col, word)
         if len(note_ids) > 1:
-            raise exception.MagicException('More than one not for "%s"'%character)
+            raise exception.MagicException('More than one note for "%s"'%word)
         if len(note_ids) == 0:
-            raise exception.MagicException('No note for "%s"'%character)
+            raise exception.MagicException('No note for "%s"'%word)
 
         note = self.mw.col.getNote(note_ids[0])
         dependencies = get_decomposition_list(note)
@@ -317,28 +317,27 @@ class MainObject:
             return
         errors = exception.MultiException()
 
-        # First, find the set of all characters to upload.
-        characters = set()
+        # First, find the transitive closure of all words and their dependencies.
+        words = []
         try:
             for note_id in selected_notes:
                 note = self.mw.col.getNote(note_id)
                 mandarin_text = get_mandarin_text(note)
-                if len(mandarin_text) == 1:
-                # Single character
-                    note_characters = [mandarin_text]
-                else:
-                    assert len(mandarin_text) > 1
-                    # A word or a sentence
-                    note_characters = get_decomposition_list(note)
-                for character in note_characters:
-                    characters.add(character)
-                    characters.update(self.get_transitive_dependencies(character))
+
+                # Text here may be a character, a word or even a sentence.
+                # The latter two will be filtered out below.
+                words.append(mandarin_text)
+                words += self.get_transitive_dependencies(mandarin_text)
         except exception.MagicException as e:
             errors.append(e)
 
         show_error(errors)
         if len(errors) > 0:
             return
+
+        # Only export characters (although Skitter seems to work for words
+        # too).
+        characters = set(filter(lambda word: len(word) == 1, words))
 
         # Now, generate the dependency graph.
         dependency_graph = {}
