@@ -500,7 +500,7 @@ class MainObject:
 
         if is_sentence:
             if has_empty_english_field(note):
-                set_english_field(note, 'Cannot use dictionary to look up sentences.')
+                set_english_field(note, 'Cannot use dictionary to look up sentences')
             # Should also set pinyin here from decomposition
         else:
             # The Mandarin text is either a word or a character. We can look
@@ -514,6 +514,8 @@ class MainObject:
             if len(dictionary_entries) == 0:
                 message = 'No dictionary entry for "' + mandarin_text + '"'
                 errors.append(exception.MagicException(message))
+                if has_empty_english_field(note):
+                    set_english_field(note, "No dictionary entry")
 
             if len(dictionary_entries) > 0:
                 # Add Englih
