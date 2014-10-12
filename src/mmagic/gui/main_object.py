@@ -315,47 +315,41 @@ class MainObject:
         if not selected_notes:
             aqt.utils.showInfo("No notes selected.")
             return
-        errors = exception.MultiException()
 
-        # First, find the transitive closure of all words and their dependencies.
+        # Export words selected in browser.
         words = []
-        try:
-            for note_id in selected_notes:
-                note = self.mw.col.getNote(note_id)
-                mandarin_text = get_mandarin_text(note)
-
-                # Text here may be a character, a word or even a sentence.
-                # The latter two will be filtered out below.
-                words.append(mandarin_text)
-                words += self.get_transitive_dependencies(mandarin_text)
-        except exception.MagicException as e:
-            errors.append(e)
-
-        show_error(errors)
-        if len(errors) > 0:
-            return
+        for note_id in selected_notes:
+            note = self.mw.col.getNote(note_id)
+            words.append(get_mandarin_text(note))
 
         # Only export characters (although Skitter seems to work for words
         # too).
-        characters = set(filter(lambda word: len(word) == 1, words))
+        selected_characters = set(filter(lambda word: len(word) == 1, words))
 
         # Now, generate the dependency graph.
         dependency_graph = {}
-        for character in characters:
+        for character in selected_characters:
             note_ids = find_notes_for_word(self.mw.col, character)
             if len(note_ids) > 1:
                 raise exception.MagicException('More than one not for "%s"'%character)
             if len(note_ids) == 0:
                 raise exception.MagicException('No note for "%s"'%character)
             note = self.mw.col.getNote(note_ids[0])
+
+            # Now get the dependencies for the note but only include
+            # characters that are in the selected characters.
             dependencies = get_decomposition_list(note)
+            dependencies = filter(lambda d: d in selected_characters, dependencies)
+
             dependency_graph[character] = dependencies
 
         # Sort topologically
         sorted_characters = zl.topological_sort(dependency_graph)
 
         # Now copy characters to clipboad so that they can be pasted in to
-        # Skritter.
+        # Skritter. Skritter has a 200 word limit per section, so we only
+        # copy max 200 characters at a time.  After each section, we wait
+        # for the user to prompt us for the next batch.
 
         section_length = 200
         while len(sorted_characters) > section_length:
