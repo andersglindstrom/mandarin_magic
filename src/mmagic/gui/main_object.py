@@ -286,22 +286,46 @@ class MainObject:
         action.triggered.connect(lambda: self.export_to_skritter(browser))
         browser.form.menuEdit.addAction(action)
 
-    def get_transitive_dependencies(self, word, depth=0):
-        # There may be more than one note for this word.
+        action = QtGui.QAction("Mark all dependencies", self.mw)
+        action.triggered.connect(lambda: self.mark_all_dependencies(browser))
+        browser.form.menuEdit.addAction(action)
 
-        #zl.print_debug(depth, 'get_transitive_dependencies: "%s"'%word)
-        note_ids = find_notes_for_word(self.mw.col, word)
-        if len(note_ids) > 1:
-            raise exception.MagicException('More than one note for "%s"'%word)
-        if len(note_ids) == 0:
-            raise exception.MagicException('No note for "%s"'%word)
+    def get_note(self, note_id):
+        return self.mw.col.getNote(note_id)
 
-        note = self.mw.col.getNote(note_ids[0])
-        dependencies = get_decomposition_list(note)
-        result = list(dependencies)
-        for d in dependencies:
-            result += self.get_transitive_dependencies(d, depth+1)
+    def get_transitive_dependencies(self, note_id, depth=0):
+        result = [note_id]
+
+        dependencies = get_decomposition_list(self.get_note(note_id))
+        #print 'dependencies:',zl.list_to_uc(dependencies)
+        for dependency in dependencies:
+            note_ids = find_notes_for_word(self.mw.col, dependency)
+            if len(note_ids) > 1:
+                raise exception.MagicException('More than one note for "%s"'%word)
+            if len(note_ids) == 0:
+                raise exception.MagicException('No note for "%s"'%word)
+            dependency_id = note_ids[0]
+            result += self.get_transitive_dependencies(dependency_id, depth+1)
         return result
+
+    def add_tag(self, browser, note_ids, tag):
+        # Code taken from anki/aqt/browser.py(addTags method).
+        # This is a bit nasty because I'm using the "browser.model" field,
+        # which is really a private field.
+        browser.model.beginReset()
+        self.mw.col.tags.bulkAdd(note_ids, tag)
+        browser.model.endReset()
+        self.mw.requireReset()
+
+    def mark_all_dependencies(self, browser):
+        selected_notes = browser.selectedNotes()
+        if not selected_notes:
+            aqt.utils.showInfo("No notes selected.")
+            return
+        notes = []
+        for note_id in selected_notes:
+            notes += self.get_transitive_dependencies(note_id)
+        self.add_tag(browser, notes, 'marked')
 
     def export_to_skritter(self, browser):
         # Generate the dependency graph and then sort topologically.
@@ -319,7 +343,7 @@ class MainObject:
         # Export words selected in browser.
         words = []
         for note_id in selected_notes:
-            note = self.mw.col.getNote(note_id)
+            note = self.get_note(note_id)
             words.append(get_mandarin_text(note))
 
         # Only export characters (although Skitter seems to work for words
@@ -334,7 +358,7 @@ class MainObject:
                 raise exception.MagicException('More than one not for "%s"'%character)
             if len(note_ids) == 0:
                 raise exception.MagicException('No note for "%s"'%character)
-            note = self.mw.col.getNote(note_ids[0])
+            note = self.get_note(note_ids[0])
 
             # Now get the dependencies for the note but only include
             # characters that are in the selected characters.
@@ -385,7 +409,7 @@ class MainObject:
             return
         errors = exception.MultiException()
         for note_id in selected_notes:
-            note = self.mw.col.getNote(note_id)
+            note = self.get_note(note_id)
             try:
                 self.populate_note(note)
             except exception.MagicException as e:
@@ -430,7 +454,7 @@ class MainObject:
         else:
             # Find out whether each note is learnt or not.
             notes_are_learnt = map(
-                lambda note_id: note_is_learnt(self.mw.col.getNote(note_id)),
+                lambda note_id: note_is_learnt(self.get_note(note_id)),
                 note_ids
             )
             # Are they all learnt?
