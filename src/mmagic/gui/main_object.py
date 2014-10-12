@@ -293,20 +293,25 @@ class MainObject:
     def get_note(self, note_id):
         return self.mw.col.getNote(note_id)
 
+    # Returns a pair: (result, errors)
     def get_transitive_dependencies(self, note_id, depth=0):
-        result = [note_id]
+        all_notes = [note_id]
+        all_errors = exception.MultiException()
 
         dependencies = get_decomposition_list(self.get_note(note_id))
-        #print 'dependencies:',zl.list_to_uc(dependencies)
         for dependency in dependencies:
             note_ids = find_notes_for_word(self.mw.col, dependency)
             if len(note_ids) > 1:
-                raise exception.MagicException('More than one note for "%s"'%word)
+                all_errors.append(exception.MagicException('More than one note for "%s"'%word))
+                continue
             if len(note_ids) == 0:
-                raise exception.MagicException('No note for "%s"'%word)
+                all_errors.append(exception.MagicException('No note for "%s"'%dependency))
+                continue
             dependency_id = note_ids[0]
-            result += self.get_transitive_dependencies(dependency_id, depth+1)
-        return result
+            notes, errors = self.get_transitive_dependencies(dependency_id, depth+1)
+            all_notes += notes
+            all_errors.append(errors)
+        return (all_notes, all_errors)
 
     def add_tag(self, browser, note_ids, tag):
         # Code taken from anki/aqt/browser.py(addTags method).
@@ -322,10 +327,14 @@ class MainObject:
         if not selected_notes:
             aqt.utils.showInfo("No notes selected.")
             return
-        notes = []
+        all_errors = exception.MultiException()
+        all_notes = list(selected_notes)
         for note_id in selected_notes:
-            notes += self.get_transitive_dependencies(note_id)
-        self.add_tag(browser, notes, 'marked')
+            notes, errors = self.get_transitive_dependencies(note_id)
+            all_notes += notes
+            all_errors.append(errors)
+        self.add_tag(browser, all_notes, 'marked')
+        show_error(all_errors)
 
     def export_to_skritter(self, browser):
         # Generate the dependency graph and then sort topologically.
