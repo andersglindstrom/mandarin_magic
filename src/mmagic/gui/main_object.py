@@ -302,7 +302,7 @@ class MainObject:
         for dependency in dependencies:
             note_ids = find_notes_for_word(self.mw.col, dependency)
             if len(note_ids) > 1:
-                all_errors.append(exception.MagicException('More than one note for "%s"'%word))
+                all_errors.append(exception.MagicException('More than one note for "%s"'%dependency))
                 continue
             if len(note_ids) == 0:
                 all_errors.append(exception.MagicException('No note for "%s"'%dependency))
