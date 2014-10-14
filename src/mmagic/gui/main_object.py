@@ -322,6 +322,22 @@ class MainObject:
         browser.model.endReset()
         self.mw.requireReset()
 
+    # Returns (result, errors pair) where result is a dictionary with
+    # the word as key and the note_id as value
+    def get_note_ids_for_words(self, words):
+        result = {}
+        errors = exception.MultiException()
+        for word in words:
+            note_ids = find_notes_for_word(self.mw.col, word)
+            if len(note_ids) > 1:
+                errors.append(exception.MagicException('More than one note for "%s"'%word))
+                continue
+            if len(note_ids) == 0:
+                errors.append(exception.MagicException('No note for "%s"'%word))
+                continue
+            result[word] = note_ids[0]
+        return (result, errors)
+
     def mark_all_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
         if not selected_notes:
@@ -359,22 +375,28 @@ class MainObject:
         # too).
         selected_characters = set(filter(lambda word: len(word) == 1, words))
 
+        chars_and_ids, errors = self.get_note_ids_for_words(selected_characters)
+        errors.raise_if_not_empty()
+
         # Now, generate the dependency graph.
         dependency_graph = {}
-        for character in selected_characters:
-            note_ids = find_notes_for_word(self.mw.col, character)
-            if len(note_ids) > 1:
-                raise exception.MagicException('More than one not for "%s"'%character)
-            if len(note_ids) == 0:
-                raise exception.MagicException('No note for "%s"'%character)
-            note = self.get_note(note_ids[0])
+        for char, note_id in chars_and_ids.iteritems():
+            note = self.get_note(note_id)
+
+            # Ignore all charactes already exported
+            if 'exported_to_skritter' in note.tags:
+                continue
 
             # Now get the dependencies for the note but only include
             # characters that are in the selected characters.
             dependencies = get_decomposition_list(note)
             dependencies = filter(lambda d: d in selected_characters, dependencies)
 
-            dependency_graph[character] = dependencies
+            dependency_graph[char] = dependencies
+
+        if len(dependency_graph) == 0:
+            aqt.utils.showInfo('There are no characters to export.')
+            return
 
         # Sort topologically
         sorted_characters = zl.topological_sort(dependency_graph)
@@ -384,10 +406,18 @@ class MainObject:
         # copy max 200 characters at a time.  After each section, we wait
         # for the user to prompt us for the next batch.
 
-        section_length = 200
-        while len(sorted_characters) > section_length:
-            section = sorted_characters[0:section_length]
-            sorted_characters = sorted_characters[section_length:]
+        print 'sorted_characters:', sorted_characters
+
+        section_length = 2
+        exported_characters = []
+        while len(sorted_characters) > 0:
+
+            character_count = min(section_length, len(sorted_characters))
+
+            print 'character_count:',character_count
+
+            section = sorted_characters[0:character_count]
+            sorted_characters = sorted_characters[character_count:]
 
             text = unicode()
             for c in section:
@@ -396,20 +426,22 @@ class MainObject:
             clipboard = QtGui.QApplication.clipboard()
             clipboard.setText(text)
 
-            msg = "%s characters copied to clipboard. There are %s characters remaining. Copy next section?"%(len(section),len(sorted_characters))
-            if not aqt.utils.askUser(msg, browser):
-                return
+            chars_and_ids, errors = self.get_note_ids_for_words(section)
+            # All problems should have be caught on first call to
+            # get_note_ids_for_words above so there shouldn't be any remaining
+            # problems.
+            assert len(errors) == 0
 
-        text = unicode()
-        for c in sorted_characters:
-            text += c + '\n'
+            self.add_tag(browser, chars_and_ids.values(), "exported_to_skritter")
 
-        clipboard = QtGui.QApplication.clipboard()
-        clipboard.setText(text)
+            if len(sorted_characters) > 0:
+                msg = "%s characters copied to clipboard. There are %s characters remaining. Copy next section?"%(len(section),len(sorted_characters))
+                if not aqt.utils.askUser(msg, browser):
+                    return
+            else:
+                msg = "%s characters copied to clipboard. There are no more characters."%len(section)
+                aqt.utils.showInfo(msg)
 
-        msg = "%s characters copied to clipboard. There are no more characters."%len(sorted_characters)
-        aqt.utils.showInfo(msg, browser)
-        
 
     def do_define_from_browser(self, browser):
         selected_notes = browser.selectedNotes()
