@@ -380,12 +380,15 @@ class MainObject:
 
         # Now, generate the dependency graph.
         dependency_graph = {}
+        already_exported = set()
         for char, note_id in chars_and_ids.iteritems():
             note = self.get_note(note_id)
 
-            # Ignore all charactes already exported
+            # Characters that have already been exported will not actually
+            # be exported.  However, they have to go into the dependency
+            # graph to do the topological sort.  They will be removed later.
             if 'exported_to_skritter' in note.tags:
-                continue
+                already_exported.add(char)
 
             # Now get the dependencies for the note but only include
             # characters that are in the selected characters.
@@ -394,53 +397,40 @@ class MainObject:
 
             dependency_graph[char] = dependencies
 
-        if len(dependency_graph) == 0:
-            aqt.utils.showInfo('There are no characters to export.')
-            return
-
         # Sort topologically
-        sorted_characters = zl.topological_sort(dependency_graph)
+        for_export = zl.topological_sort(dependency_graph)
+        # Remove any characters that have already been exported
+        #for_export = filter(lambda c: c not in already_exported, for_export)
+
+        if len(for_export) == 0:
+            aqt.utils.showInfo('There are no characters to export. They may have already been exported. Check tags.')
+            return
 
         # Now copy characters to clipboad so that they can be pasted in to
         # Skritter. Skritter has a 200 word limit per section, so we only
         # copy max 200 characters at a time.  After each section, we wait
         # for the user to prompt us for the next batch.
 
-        print 'sorted_characters:', sorted_characters
+        section_size = 200
+        if len(for_export) > section_size:
+            aqt.utils.showWarning("Skritter section size is maximum %s. Please select fewer characters"%section_size, browser)
+            return
 
-        section_length = 2
-        exported_characters = []
-        while len(sorted_characters) > 0:
+        text = unicode()
+        for c in for_export:
+            text += c + '\n'
 
-            character_count = min(section_length, len(sorted_characters))
+        QtGui.QApplication.clipboard().setText(text)
 
-            print 'character_count:',character_count
+        aqt.utils.showInfo("%s characters copied to clipboard for pasting into Skritter."%len(for_export), browser)
 
-            section = sorted_characters[0:character_count]
-            sorted_characters = sorted_characters[character_count:]
+        chars_and_ids, errors = self.get_note_ids_for_words(for_export)
+        # All problems should have be caught on first call to
+        # get_note_ids_for_words above so there shouldn't be any remaining
+        # problems.
+        assert len(errors) == 0
 
-            text = unicode()
-            for c in section:
-                text += c + '\n'
-
-            clipboard = QtGui.QApplication.clipboard()
-            clipboard.setText(text)
-
-            chars_and_ids, errors = self.get_note_ids_for_words(section)
-            # All problems should have be caught on first call to
-            # get_note_ids_for_words above so there shouldn't be any remaining
-            # problems.
-            assert len(errors) == 0
-
-            self.add_tag(browser, chars_and_ids.values(), "exported_to_skritter")
-
-            if len(sorted_characters) > 0:
-                msg = "%s characters copied to clipboard. There are %s characters remaining. Copy next section?"%(len(section),len(sorted_characters))
-                if not aqt.utils.askUser(msg, browser):
-                    return
-            else:
-                msg = "%s characters copied to clipboard. There are no more characters."%len(section)
-                aqt.utils.showInfo(msg)
+        self.add_tag(browser, chars_and_ids.values(), "exported_to_skritter")
 
 
     def do_define_from_browser(self, browser):
@@ -461,7 +451,8 @@ class MainObject:
                 # fields are okay.
                 note.flush()
         show_error(errors)
-        self.mw.reset(guiOnly=True)
+        # Refresh the editor
+        browser.editor.setNote(browser.editor.note)
         aqt.utils.showInfo('Done.')
 
     def setup_button(self, editor, text, callback):
@@ -475,17 +466,19 @@ class MainObject:
 
     def setup_editor_buttons(self, editor):
         self.editor = editor
-        self.setup_button(editor, 'P', lambda: self.populate_and_save_note(editor.note))
-        self.setup_button(editor, '+', lambda: self.add_missing_components(editor.note))
+        self.setup_button(editor, 'P', lambda: self.populate_and_save_note(editor))
+        self.setup_button(editor, '+', lambda: self.add_missing_components(editor))
 
-    def populate_and_save_note(self, note):
+    def populate_and_save_note(self, editor):
+        note = editor.note
         try:
             self.populate_note(note)
             note.flush()
         except exception.MagicException as e:
             show_error(e)
         finally:
-            self.mw.reset(guiOnly = True)
+            # Refresh editor
+            editor.setNote(note)
 
     def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
@@ -628,7 +621,9 @@ class MainObject:
             ))
         errors.raise_if_not_empty()
 
-    def add_missing_components(self, note):
+    def add_missing_components(self, editor):
+
+        note = editor.note
 
         print 'add_missing_components: note=%s', note
 
@@ -653,6 +648,8 @@ class MainObject:
         # of words in the text to reflect this.
         self.refresh_learning_status_colour(note)
         note.flush()
-        self.mw.reset(guiOnly = True)
+
+        # Refresh editor
+        editor.setNote(note)
 
         show_error(errors)
