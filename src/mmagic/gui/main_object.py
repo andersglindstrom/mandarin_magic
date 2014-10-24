@@ -368,12 +368,7 @@ class MainObject:
             dependencies += words
         notes_exist = map(lambda word: self.word_has_notes(word), dependencies)
         all_exist = reduce(operator.and_, notes_exist, True)
-        result = not all_exist
-        print 'dependencies:',dependencies
-        print 'notes_exist:',notes_exist
-        print 'all_exist:',all_exist
-        print 'result:',result
-        return result
+        return all_exist
 
     def mark_cards_with_missing_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
