@@ -373,7 +373,12 @@ class MainObject:
             dependencies += words
         notes_exist = map(lambda word: self.word_has_notes(word), dependencies)
         all_exist = reduce(operator.and_, notes_exist, True)
-        return not all_exist
+        print 'notes_exist:',notes_exist
+        print 'all_exist:',all_exist
+
+        result = not all_exist
+        print 'result:', result
+        return result
 
     def mark_cards_with_missing_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
@@ -388,6 +393,7 @@ class MainObject:
                     notes_to_mark.append(note_id)
             except exception.MagicException as e:
                 errors.append(e)
+        print 'marking notes:',notes_to_mark
         self.add_tag(browser, notes_to_mark, 'marked')
         show_error(errors)
 
@@ -445,7 +451,10 @@ class MainObject:
         selected_characters = set(filter(lambda word: len(word) == 1, words))
 
         chars_and_ids, errors = self.get_note_ids_for_words(selected_characters)
-        errors.raise_if_not_empty()
+
+        if len(errors) > 0:
+            show_error(errors)
+            return
 
         # Now, generate the dependency graph.
         dependency_graph = {}
@@ -551,9 +560,13 @@ class MainObject:
             editor.setNote(note)
 
     def add_missing_components_from_editor(self, editor):
-        self.add_missing_dependencies_to_note(editor.note)
-        # Refresh editor
-        editor.setNote(editor.note)
+        try:
+            self.add_missing_dependencies_to_note(editor.note)
+        except exception.MagicException as e:
+            show_error(e)
+        finally:
+            # Refresh editor
+            editor.setNote(editor.note)
 
     def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
@@ -718,4 +731,4 @@ class MainObject:
         self.refresh_learning_status_colour(note)
         note.flush()
 
-        show_error(errors)
+        errors.raise_if_not_empty()
