@@ -303,6 +303,11 @@ class MainObject:
             lambda: self.mark_all_dependencies(browser),
             browser)
 
+        self.add_browser_action(
+            "Add missing dependencies",
+            lambda: self.add_missing_dependencies(browser),
+            browser)
+
     def get_note(self, note_id):
         return self.mw.col.getNote(note_id)
 
@@ -368,7 +373,7 @@ class MainObject:
             dependencies += words
         notes_exist = map(lambda word: self.word_has_notes(word), dependencies)
         all_exist = reduce(operator.and_, notes_exist, True)
-        return all_exist
+        return not all_exist
 
     def mark_cards_with_missing_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
@@ -384,6 +389,22 @@ class MainObject:
             except exception.MagicException as e:
                 errors.append(e)
         self.add_tag(browser, notes_to_mark, 'marked')
+        show_error(errors)
+
+    def add_missing_dependencies(self, browser):
+        selected_notes = browser.selectedNotes()
+        if not selected_notes:
+            aqt.utils.showInfo("No notes selected.", browser)
+            return
+        errors = exception.MultiException()
+        for note_id in selected_notes:
+            try:
+                note = self.get_note(note_id)
+                self.add_missing_dependencies_to_note(note)
+            except exception.MagicException as e:
+                errors.append(e)
+        # Refresh editor
+        browser.editor.setNote(browser.editor.note)
         show_error(errors)
 
     def mark_all_dependencies(self, browser):
@@ -516,7 +537,7 @@ class MainObject:
         self.editor = editor
         # Note that shortcut is Alt-P
         self.setup_button(editor, '&P', lambda: self.populate_and_save_note(editor))
-        self.setup_button(editor, '+', lambda: self.add_missing_components(editor))
+        self.setup_button(editor, '+', lambda: self.add_missing_components_from_editor(editor))
 
     def populate_and_save_note(self, editor):
         note = editor.note
@@ -528,6 +549,11 @@ class MainObject:
         finally:
             # Refresh editor
             editor.setNote(note)
+
+    def add_missing_components_from_editor(self, editor):
+        self.add_missing_dependencies_to_note(editor.note)
+        # Refresh editor
+        editor.setNote(editor.note)
 
     def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
@@ -670,12 +696,7 @@ class MainObject:
             ))
         errors.raise_if_not_empty()
 
-    def add_missing_components(self, editor):
-
-        note = editor.note
-
-        print 'add_missing_components: note=%s', note
-
+    def add_missing_dependencies_to_note(self, note):
         # Add a note for every composition component that doesn't yet
         # have one.
         dependencies = []
@@ -684,7 +705,6 @@ class MainObject:
         if has_measure_word_field(note):
             dependencies += get_measure_word_list(note)
 
-        print 'add_missing_components: dependencies:',dependencies
         errors = exception.MultiException()
         for dependency in dependencies:
             if not note_exists_for_mandarin(self.mw.col, dependency):
@@ -697,8 +717,5 @@ class MainObject:
         # of words in the text to reflect this.
         self.refresh_learning_status_colour(note)
         note.flush()
-
-        # Refresh editor
-        editor.setNote(note)
 
         show_error(errors)
