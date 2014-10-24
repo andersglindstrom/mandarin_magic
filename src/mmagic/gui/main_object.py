@@ -277,18 +277,26 @@ class MainObject:
         self.mw = anki_main_window
         self.dictionary = zl.standard_dictionary()
 
+    def add_browser_action(self, name, callback, browser):
+        action = QtGui.QAction(name, self.mw)
+        action.triggered.connect(callback)
+        browser.form.menuEdit.addAction(action)
+
     def setup_browser_menu(self, browser):
-        # Disable this for now. I think it's more trouble than it's worth.
-        # It's safer to populate each note one-by-one.
+        self.add_browser_action(
+            "Populate",
+            lambda: self.populate_from_browser(browser),
+            browser)
 
-        #self.browser.form.menuEdit.addAction(self.do_define_action)
-        action = QtGui.QAction("Export to Skritter", self.mw)
-        action.triggered.connect(lambda: self.export_to_skritter(browser))
-        browser.form.menuEdit.addAction(action)
+        self.add_browser_action(
+            "Export to Skritter",
+            lambda: self.export_to_skritter(browser),
+            browser)
 
-        action = QtGui.QAction("Mark all dependencies", self.mw)
-        action.triggered.connect(lambda: self.mark_all_dependencies(browser))
-        browser.form.menuEdit.addAction(action)
+        self.add_browser_action(
+            "Mark all dependencies",
+            lambda: self.mark_all_dependencies(browser),
+            browser)
 
     def get_note(self, note_id):
         return self.mw.col.getNote(note_id)
@@ -341,7 +349,7 @@ class MainObject:
     def mark_all_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
         if not selected_notes:
-            aqt.utils.showInfo("No notes selected.")
+            aqt.utils.showInfo("No notes selected.", browser)
             return
         all_errors = exception.MultiException()
         all_notes = list(selected_notes)
@@ -362,7 +370,7 @@ class MainObject:
 
         selected_notes = browser.selectedNotes()
         if not selected_notes:
-            aqt.utils.showInfo("No notes selected.")
+            aqt.utils.showInfo("No notes selected.", browser)
             return
 
         # Export words selected in browser.
@@ -403,7 +411,7 @@ class MainObject:
         #for_export = filter(lambda c: c not in already_exported, for_export)
 
         if len(for_export) == 0:
-            aqt.utils.showInfo('There are no characters to export. They may have already been exported. Check tags.')
+            aqt.utils.showInfo('There are no characters to export. They may have already been exported. Check tags.', browser)
             return
 
         # Now copy characters to clipboad so that they can be pasted in to
@@ -433,10 +441,10 @@ class MainObject:
         self.add_tag(browser, chars_and_ids.values(), "exported_to_skritter")
 
 
-    def do_define_from_browser(self, browser):
+    def populate_from_browser(self, browser):
         selected_notes = browser.selectedNotes()
         if not selected_notes:
-            aqt.utils.showInfo("No notes selected.")
+            aqt.utils.showInfo("No notes selected.", browser)
             return
         errors = exception.MultiException()
         for note_id in selected_notes:
@@ -453,7 +461,7 @@ class MainObject:
         show_error(errors)
         # Refresh the editor
         browser.editor.setNote(browser.editor.note)
-        aqt.utils.showInfo('Done.')
+        aqt.utils.showInfo('Done.', browser)
 
     def setup_button(self, editor, text, callback):
         button = QPushButton(editor.widget)
