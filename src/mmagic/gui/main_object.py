@@ -294,6 +294,11 @@ class MainObject:
             browser)
 
         self.add_browser_action(
+            "Mark cards with missing dependencies",
+            lambda: self.mark_cards_with_missing_dependencies(browser),
+            browser)
+
+        self.add_browser_action(
             "Mark all dependencies",
             lambda: self.mark_all_dependencies(browser),
             browser)
@@ -345,6 +350,46 @@ class MainObject:
                 continue
             result[word] = note_ids[0]
         return (result, errors)
+
+    def word_has_notes(self, word):
+        return len(find_notes_for_word(self.mw.col, word)) > 0
+
+    def note_has_missing_dependencies(self, note_id):
+        result = False
+        dependencies = []
+        note = self.get_note(note_id)
+        if has_decomposition_field(note):
+            field = get_decomposition_field(note)
+            pattern, words = zl.extract_cjk(field)
+            dependencies += words
+        if has_measure_word_field(note):
+            field = get_measure_word_field(note)
+            pattern, words = zl.extract_cjk(field)
+            dependencies += words
+        notes_exist = map(lambda word: self.word_has_notes(word), dependencies)
+        all_exist = reduce(operator.and_, notes_exist, True)
+        result = not all_exist
+        print 'dependencies:',dependencies
+        print 'notes_exist:',notes_exist
+        print 'all_exist:',all_exist
+        print 'result:',result
+        return result
+
+    def mark_cards_with_missing_dependencies(self, browser):
+        selected_notes = browser.selectedNotes()
+        if not selected_notes:
+            aqt.utils.showInfo("No notes selected.", browser)
+            return
+        errors = exception.MultiException()
+        notes_to_mark = []
+        for note_id in selected_notes:
+            try:
+                if self.note_has_missing_dependencies(note_id):
+                    notes_to_mark.append(note_id)
+            except exception.MagicException as e:
+                errors.append(e)
+        self.add_tag(browser, notes_to_mark, 'marked')
+        show_error(errors)
 
     def mark_all_dependencies(self, browser):
         selected_notes = browser.selectedNotes()
