@@ -466,7 +466,8 @@ class MainObject:
 
     def setup_editor_buttons(self, editor):
         self.editor = editor
-        self.setup_button(editor, 'P', lambda: self.populate_and_save_note(editor))
+        # Note that shortcut is Alt-P
+        self.setup_button(editor, '&P', lambda: self.populate_and_save_note(editor))
         self.setup_button(editor, '+', lambda: self.add_missing_components(editor))
 
     def populate_and_save_note(self, editor):
@@ -536,7 +537,7 @@ class MainObject:
             # characters.  If it's a sentence, it is is split into words.
             is_sentence = False
             if len(mandarin_text) == 1:
-                decomposition = zl.decompose_character(mandarin_text)
+                decomposition = zl.decompose_character(mandarin_text, stop_at_strokes=False)
             else:
                 # When segmenting sentences, only use the traditional words.
                 words = zl.segment(mandarin_text, zl.TRADITIONAL)
