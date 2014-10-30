@@ -430,6 +430,8 @@ class MainObject:
     def export_to_skritter(self, browser):
         # Generate the dependency graph and then sort topologically.
 
+        print 'export_to_skritter'
+
         # Generate the dependency graph.
         #
         # We have to add all the selected characters and all the characters
@@ -458,15 +460,8 @@ class MainObject:
 
         # Now, generate the dependency graph.
         dependency_graph = {}
-        already_exported = set()
         for char, note_id in chars_and_ids.iteritems():
             note = self.get_note(note_id)
-
-            # Characters that have already been exported will not actually
-            # be exported.  However, they have to go into the dependency
-            # graph to do the topological sort.  They will be removed later.
-            if 'exported_to_skritter' in note.tags:
-                already_exported.add(char)
 
             # Now get the dependencies for the note but only include
             # characters that are in the selected characters.
@@ -490,25 +485,38 @@ class MainObject:
         # for the user to prompt us for the next batch.
 
         section_size = 200
-        if len(for_export) > section_size:
-            aqt.utils.showWarning("Skritter section size is maximum %s. Please select fewer characters"%section_size, browser)
-            return
+        def export(section):
+            print 'len(section):',len(section)
+            assert len(section) <= section_size
+            text = unicode()
+            for c in section:
+                text += c + '\n'
 
-        text = unicode()
-        for c in for_export:
-            text += c + '\n'
+            QtGui.QApplication.clipboard().setText(text)
 
-        QtGui.QApplication.clipboard().setText(text)
+            ids = map(lambda char: chars_and_ids[char], section)
+            print 'adding export_to_skritter to', ids
+            self.add_tag(browser, ids, 'exported_to_skritter')
 
+
+        while len(for_export) > section_size:
+
+            section = for_export[0:section_size]
+            for_export = for_export[section_size:]
+
+            export(section)
+
+            result = aqt.utils.askUser('%s characters copied to clipboard.  There are more characters remaining. Press OK when you want more characters to be copied.'%section_size, browser)
+            if not result:
+                return
+
+        assert len(for_export) <= section_size
+        export(for_export)
         aqt.utils.showInfo("%s characters copied to clipboard for pasting into Skritter."%len(for_export), browser)
 
-        chars_and_ids, errors = self.get_note_ids_for_words(for_export)
-        # All problems should have be caught on first call to
-        # get_note_ids_for_words above so there shouldn't be any remaining
-        # problems.
-        assert len(errors) == 0
-
-        self.add_tag(browser, chars_and_ids.values(), "exported_to_skritter")
+        print 'exiting exported_to_skritter'
+        # Refresh editor
+        browser.editor.setNote(browser.editor.note)
 
 
     def populate_from_browser(self, browser):
