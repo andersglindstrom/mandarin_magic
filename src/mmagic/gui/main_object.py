@@ -692,8 +692,9 @@ class MainObject:
                     try:
                         formatted = format_pinyin('['+pinyin_text+']')
                         set_pinyin_field(note, formatted)
-                    except zl.ZhonglibException:
-                        # Isn't in numbered format.  Don't worry about it.
+                    except Exception:
+                        # Something didn't work.  It's probably not in 
+                        # numbered format.  Just leave it be.
                         pass
 
                 # Add 量詞
