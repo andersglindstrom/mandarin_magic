@@ -88,6 +88,9 @@ def has_empty_english_field(note):
 def set_english_field(note, value):
     set_field(note, ENGLISH_FIELDS, value)
 
+#------------------------------------------------------------------------------
+# Pinyin
+
 def has_pinyin_field(note):
     return has_field(note, PINYIN_FIELDS)
 
@@ -96,6 +99,12 @@ def has_empty_pinyin_field(note):
 
 def set_pinyin_field(note, value):
     set_field(note, PINYIN_FIELDS, value)
+
+def get_pinyin_field(note):
+    return get_field(note, PINYIN_FIELDS)
+
+#------------------------------------------------------------------------------
+# Measure word
 
 def has_measure_word_field(note):
     return has_field(note, MEASURE_WORD_FIELDS)
@@ -108,6 +117,9 @@ def get_measure_word_field(note):
 
 def set_measure_word_field(note, value):
     set_field(note, MEASURE_WORD_FIELDS, value)
+
+#------------------------------------------------------------------------------
+# Decomposition
 
 def has_decomposition_field(note):
     return has_field(note, DECOMPOSITION_FIELDS)
@@ -673,6 +685,16 @@ class MainObject:
                 # Add 拼音
                 if has_empty_pinyin_field(note):
                     set_pinyin_field(note, format_pinyin_list(dictionary_entries))
+                else:
+                    # The field may be in numbered pinyin format
+                    # If so, convert it to proper tone marks.
+                    pinyin_text = get_pinyin_field(note)
+                    try:
+                        formatted = format_pinyin('['+pinyin_text+']')
+                        set_pinyin_field(note, formatted)
+                    except zl.ZhonglibException:
+                        # Isn't in numbered format.  Don't worry about it.
+                        pass
 
                 # Add 量詞
                 if has_empty_measure_word_field(note):
