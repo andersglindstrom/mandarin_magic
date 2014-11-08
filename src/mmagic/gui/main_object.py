@@ -249,9 +249,16 @@ def format_decomposition(decomposition):
 
 # Returns the decomposition components as a list. A new list is returned. It
 # can be modified by the client.
+#
+# If the field is 'None' an empty list is returned.
+#
+# If the field is empty, None is returned.
+
 def get_decomposition_list(note):
     field = get_decomposition_field(note)
     field = anki.utils.stripHTML(field.strip().rstrip())
+    if len(field) == 0:
+        return None
     if field == 'None':
         return []
     pattern, words = zl.extract_cjk(field)
@@ -329,18 +336,21 @@ class MainObject:
         all_errors = exception.MultiException()
 
         dependencies = get_decomposition_list(self.get_note(note_id))
-        for dependency in dependencies:
-            note_ids = find_notes_for_word(self.mw.col, dependency)
-            if len(note_ids) > 1:
-                all_errors.append(exception.MagicException('More than one note for "%s"'%dependency))
-                continue
-            if len(note_ids) == 0:
-                all_errors.append(exception.MagicException('No note for "%s"'%dependency))
-                continue
-            dependency_id = note_ids[0]
-            notes, errors = self.get_transitive_dependencies(dependency_id, depth+1)
-            all_notes += notes
-            all_errors.append(errors)
+        if not dependencies:
+            all_errors.append(exception.MagicException('Some notes have empty dependency information.'))
+        else:
+            for dependency in dependencies:
+                note_ids = find_notes_for_word(self.mw.col, dependency)
+                if len(note_ids) > 1:
+                    all_errors.append(exception.MagicException('More than one note for "%s"'%dependency))
+                    continue
+                if len(note_ids) == 0:
+                    all_errors.append(exception.MagicException('No note for "%s"'%dependency))
+                    continue
+                dependency_id = note_ids[0]
+                notes, errors = self.get_transitive_dependencies(dependency_id, depth+1)
+                all_notes += notes
+                all_errors.append(errors)
         return (all_notes, all_errors)
 
     def add_tag(self, browser, note_ids, tag):
