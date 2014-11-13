@@ -71,7 +71,7 @@ def set_field(note, fields, value):
     note[calculate_field_name(note, fields)] = value
 
 def get_mandarin_text(note, fail_if_empty=False):
-    return get_field(note, MANDARIN_FIELDS, fail_if_empty)
+    return get_field(note, MANDARIN_FIELDS, fail_if_empty).strip().rstrip()
 
 def set_mandarin_field(note, value):
     set_field(note, MANDARIN_FIELDS, value)
@@ -313,6 +313,11 @@ class MainObject:
             browser)
 
         self.add_browser_action(
+            "Mark cards with empty dependencies",
+            lambda: self.mark_cards_with_empty_dependencies(browser),
+            browser)
+
+        self.add_browser_action(
             "Mark cards with missing dependencies",
             lambda: self.mark_cards_with_missing_dependencies(browser),
             browser)
@@ -336,7 +341,7 @@ class MainObject:
         all_errors = exception.MultiException()
 
         dependencies = get_decomposition_list(self.get_note(note_id))
-        if not dependencies:
+        if dependencies == None:
             all_errors.append(exception.MagicException('Some notes have empty dependency information.'))
         else:
             for dependency in dependencies:
@@ -380,6 +385,26 @@ class MainObject:
 
     def word_has_notes(self, word):
         return len(find_notes_for_word(self.mw.col, word)) > 0
+
+    def note_has_empty_dependencies(self, note_id):
+        return get_decomposition_list(self.get_note(note_id)) == None
+
+    def mark_cards_with_empty_dependencies(self, browser):
+        selected_notes = browser.selectedNotes()
+        if not selected_notes:
+            aqt.utils.showInfo("No notes selected.", browser)
+            return
+        errors = exception.MultiException()
+        notes_to_mark = []
+        for note_id in selected_notes:
+            try:
+                if self.note_has_empty_dependencies(note_id):
+                    notes_to_mark.append(note_id)
+            except exception.MagicException as e:
+                errors.append(e)
+        print 'marking notes:',notes_to_mark
+        self.add_tag(browser, notes_to_mark, 'marked')
+        show_error(errors)
 
     def note_has_missing_dependencies(self, note_id):
         result = False
