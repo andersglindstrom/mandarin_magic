@@ -16,7 +16,7 @@ MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin', '
 ENGLISH_FIELDS=frozenset({'Back', 'English', 'Meaning'})
 PINYIN_FIELDS=frozenset({u'拼音', u'pīnyīn', u'Pīnyīn', 'Pinyin', 'Pronunciation'})
 DECOMPOSITION_FIELDS=frozenset({'Decomposition'})
-MEASURE_WORD_FIELDS=frozenset({'Measure Word', 'Classifier', u'量詞'})
+MEASURE_WORD_FIELDS=frozenset({'Measure Word', 'Measure Words', 'Classifier', 'Classifiers', u'量詞'})
 
 #------------------------------------------------------------------------------
 #
@@ -457,7 +457,7 @@ class MainObject:
         for note_id in selected_notes:
             try:
                 note = self.get_note(note_id)
-                self.add_missing_dependencies_to_note(note)
+                self.add_missing_dependencies_for_note(note)
             except exception.MagicException as e:
                 errors.append(e)
         # Refresh editor
@@ -618,7 +618,7 @@ class MainObject:
 
     def add_missing_components_from_editor(self, editor):
         try:
-            self.add_missing_dependencies_to_note(editor.note)
+            self.add_missing_dependencies_for_note(editor.note)
         except exception.MagicException as e:
             show_error(e)
         finally:
@@ -791,26 +791,40 @@ class MainObject:
                 raise exception.TooManyNotes(word)
             elif len(note_ids) == 1:
                 note = self.get_note(note_ids[0])
-                dependencies = self.get_all_dependencies(note)
+                dependencies = get_decomposition_list(note)
+                if dependencies == None:
+                    msg = '"%s" has missing component list'%word
+                    raise exception.MagicException(msg)
             else:
                 dependencies = zl.decompose(word, zl.TRADITIONAL)
             result[word] = dependencies
             queue += dependencies
         return result
 
-    def add_missing_dependencies_to_note(self, note):
+    def add_missing_dependencies_for_word(self, model, word):
         errors = exception.MultiException()
         try:
-            root_text = get_mandarin_text(note)
-            dependency_graph = self.build_dependency_graph(root_text)
+            dependency_graph = self.build_dependency_graph(word)
             sorted_words = zl.topological_sort(dependency_graph)
-            assert sorted_words[-1] == root_text
+            assert sorted_words[-1] == word
             for word in sorted_words:
                 if not note_exists_for_mandarin(self.mw.col, word):
                     try:
-                        self.add_mandarin_note(note.model(), word)
+                        self.add_mandarin_note(model, word)
                     except exception.MagicException as e:
                         errors.append(e)
+        except exception.MagicException as e:
+            errors.append(e)
+        errors.raise_if_not_empty()
+
+    def add_missing_dependencies_for_note(self, note):
+        errors = exception.MultiException()
+        try:
+            self.add_missing_dependencies_for_word(note.model(), get_mandarin_text(note))
+            if has_measure_word_field(note):
+                measure_words = get_measure_word_list(note)
+                for word in measure_words:
+                    self.add_missing_dependencies_for_word(note.model(), word)
         except exception.MagicException as e:
             errors.append(e)
 
