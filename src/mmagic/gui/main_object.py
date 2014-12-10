@@ -781,11 +781,21 @@ class MainObject:
     # Returns a dependency graph for all transitive components of the given
     # word.  If a note exists for a given word, its dependency information is
     # used.  If not, the zhonglib  decomposition data is used.
+    #
+    # Cycles do not break this function because it only looks at each node
+    # once.  However, it won't tell you if there's a cycle. The graph produced
+    # here can be passed to topological_sort.  It will detect cycles.
+
     def build_dependency_graph(self, word):
         result = {}
         queue = [word]
         while queue:
             word = queue.pop()
+            if word in result:
+                # This word has already been seen. This is not necessarily
+                # a cycle because in a DAG it's possible to see the same
+                # node twice during a traversal
+                continue
             note_ids = find_note_ids_for_word(self.mw.col, word)
             if len(note_ids) > 1:
                 raise exception.TooManyNotes(word)
@@ -805,6 +815,7 @@ class MainObject:
         errors = exception.MultiException()
         try:
             dependency_graph = self.build_dependency_graph(word)
+            # topological_sort will detect cycles
             sorted_words = zl.topological_sort(dependency_graph)
             assert sorted_words[-1] == word
             for word in sorted_words:
