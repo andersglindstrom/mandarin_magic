@@ -322,30 +322,16 @@ class MainObject:
     def get_note(self, note_id):
         return self.mw.col.getNote(note_id)
 
-    # Returns list of components and of measure words
-    # If the component list is undefined an exception is raised
-    # Undefined means completely empty. A value of 'None' is defined to
-    # mean that the character has no components.
-    def get_all_dependencies(self, note):
-        dependencies = []
-        if has_decomposition_field(note):
-            component_list = get_decomposition_list(note)
-            if component_list == None:
-                msg = '"%s" has missing component list'%get_mandarin_text(note)
-                raise exception.MagicException(msg)
-            else:
-                dependencies += component_list
-        if has_measure_word_field(note):
-            dependencies += get_measure_word_list(note)
-        return dependencies
-
     # Returns a pair: (result, errors)
     def get_transitive_dependencies(self, note_id, depth=0):
         all_notes = [note_id]
         all_errors = exception.MultiException()
 
         try:
-            dependencies = self.get_all_dependencies(self.get_note(note_id))
+            dependencies = get_decomposition_list(self.get_note(note_id))
+            if dependencies == None:
+                msg = '"%s" has missing component list'%get_mandarin_text(note)
+                raise exception.MagicException(msg)
             for dependency in dependencies:
                 note_ids = find_note_ids_for_word(self.mw.col, dependency)
                 if len(note_ids) > 1:
@@ -358,8 +344,8 @@ class MainObject:
                 notes, errors = self.get_transitive_dependencies(dependency_id, depth+1)
                 all_notes += notes
                 all_errors.append(errors)
-        except Exception as e:
-            all_errors.append(exception.MagicException(str(e)))
+        except exception.MagicException as e:
+            all_errors.append(e)
         return (all_notes, all_errors)
 
     def add_tag(self, browser, note_ids, tag):
