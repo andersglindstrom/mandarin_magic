@@ -336,10 +336,18 @@ class MainObject:
         return self.mw.col.getNote(note_id)
 
     # Returns list of components and of measure words
-    def get_all_dependencies(self,  note):
+    # If the component list is undefined an exception is raised
+    # Undefined means completely empty. A value of 'None' is defined to
+    # mean that the character has no components.
+    def get_all_dependencies(self, note):
         dependencies = []
         if has_decomposition_field(note):
-            dependencies += get_decomposition_list(note)
+            component_list = get_decomposition_list(note)
+            if component_list == None:
+                msg = '"%s" has missing component list'%get_mandarin_text(note)
+                raise exception.MagicException(msg)
+            else:
+                dependencies += component_list
         if has_measure_word_field(note):
             dependencies += get_measure_word_list(note)
         return dependencies
@@ -349,10 +357,8 @@ class MainObject:
         all_notes = [note_id]
         all_errors = exception.MultiException()
 
-        dependencies = self.get_all_dependencies(self.get_note(note_id))
-        if dependencies == None:
-            all_errors.append(exception.MagicException('Some notes have empty dependency information.'))
-        else:
+        try:
+            dependencies = self.get_all_dependencies(self.get_note(note_id))
             for dependency in dependencies:
                 note_ids = find_note_ids_for_word(self.mw.col, dependency)
                 if len(note_ids) > 1:
@@ -365,6 +371,8 @@ class MainObject:
                 notes, errors = self.get_transitive_dependencies(dependency_id, depth+1)
                 all_notes += notes
                 all_errors.append(errors)
+        except Exception as e:
+            all_errors.append(e)
         return (all_notes, all_errors)
 
     def add_tag(self, browser, note_ids, tag):
@@ -803,26 +811,29 @@ class MainObject:
     def add_missing_dependencies_to_note(self, note):
         # Add a note for every composition component that doesn't yet
         # have one.
-        dependencies = self.get_all_dependencies(note)
 
         errors = exception.MultiException()
-        for dependency in dependencies:
-            note_ids = find_note_ids_for_word(self.mw.col, dependency)
-            if len(note_ids) == 0:
-            # No notes for the dependency. Create one
-                try:
-                    new_note = self.add_mandarin_note(note.model(), dependency)
-                    self.add_missing_dependencies_to_note(new_note)
-                except exception.MagicException as e:
-                    errors.append(e)
-            else:
-            # Note already exists for dependency. Add any of its missing
-            # dependencies.
-                for note_id in note_ids:
+        try:
+            dependencies = self.get_all_dependencies(note)
+            for dependency in dependencies:
+                note_ids = find_note_ids_for_word(self.mw.col, dependency)
+                if len(note_ids) == 0:
+                # No notes for the dependency. Create one
                     try:
-                        self.add_missing_dependencies_to_note(self.get_note(note_id))
+                        new_note = self.add_mandarin_note(note.model(), dependency)
+                        self.add_missing_dependencies_to_note(new_note)
                     except exception.MagicException as e:
                         errors.append(e)
+                else:
+                # Note already exists for dependency. Add any of its missing
+                # dependencies.
+                    for note_id in note_ids:
+                        try:
+                            self.add_missing_dependencies_to_note(self.get_note(note_id))
+                        except exception.MagicException as e:
+                            errors.append(e)
+        except Exception as e:
+            errors.append(e)
 
         # Missing components (may) have been added. Have to update the colour
         # of words in the text to reflect this.
