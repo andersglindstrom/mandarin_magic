@@ -335,12 +335,21 @@ class MainObject:
     def get_note(self, note_id):
         return self.mw.col.getNote(note_id)
 
+    # Returns list of components and of measure words
+    def get_all_dependencies(self,  note):
+        dependencies = []
+        if has_decomposition_field(note):
+            dependencies += get_decomposition_list(note)
+        if has_measure_word_field(note):
+            dependencies += get_measure_word_list(note)
+        return dependencies
+
     # Returns a pair: (result, errors)
     def get_transitive_dependencies(self, note_id, depth=0):
         all_notes = [note_id]
         all_errors = exception.MultiException()
 
-        dependencies = get_decomposition_list(self.get_note(note_id))
+        dependencies = self.get_all_dependencies(self.get_note(note_id))
         if dependencies == None:
             all_errors.append(exception.MagicException('Some notes have empty dependency information.'))
         else:
@@ -793,11 +802,7 @@ class MainObject:
     def add_missing_dependencies_to_note(self, note):
         # Add a note for every composition component that doesn't yet
         # have one.
-        dependencies = []
-        if has_decomposition_field(note):
-            dependencies += get_decomposition_list(note)
-        if has_measure_word_field(note):
-            dependencies += get_measure_word_list(note)
+        dependencies = self.get_all_dependencies(note)
 
         errors = exception.MultiException()
         for dependency in dependencies:
