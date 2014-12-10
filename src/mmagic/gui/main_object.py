@@ -349,7 +349,7 @@ class MainObject:
             for dependency in dependencies:
                 note_ids = find_note_ids_for_word(self.mw.col, dependency)
                 if len(note_ids) > 1:
-                    all_errors.append(exception.MagicException('More than one note for "%s"'%dependency))
+                    all_errors.append(exception.TooManyNotes(dependency))
                     continue
                 if len(note_ids) == 0:
                     all_errors.append(exception.MagicException('No note for "%s"'%dependency))
@@ -359,7 +359,7 @@ class MainObject:
                 all_notes += notes
                 all_errors.append(errors)
         except Exception as e:
-            all_errors.append(e)
+            all_errors.append(exception.MagicException(str(e)))
         return (all_notes, all_errors)
 
     def add_tag(self, browser, note_ids, tag):
@@ -379,7 +379,7 @@ class MainObject:
         for word in words:
             note_ids = find_note_ids_for_word(self.mw.col, word)
             if len(note_ids) > 1:
-                errors.append(exception.MagicException('More than one note for "%s"'%word))
+                errors.append(exception.TooManyNotes(word))
                 continue
             if len(note_ids) == 0:
                 errors.append(exception.MagicException('No note for "%s"'%word))
@@ -669,7 +669,7 @@ class MainObject:
             # characters.  If it's a sentence, it is is split into words.
             is_sentence = False
             if len(mandarin_text) == 1:
-                decomposition = zl.decompose_character(mandarin_text, stop_at_strokes=False)
+                decomposition = zl.decompose_character(mandarin_text)
             else:
                 # When segmenting sentences, only use the traditional words.
                 words = zl.segment(mandarin_text, zl.TRADITIONAL)
@@ -778,31 +778,40 @@ class MainObject:
         errors.raise_if_not_empty()
         return note
 
-    def add_missing_dependencies_to_note(self, note):
-        # Add a note for every composition component that doesn't yet
-        # have one.
+    # Returns a dependency graph for all transitive components of the given
+    # word.  If a note exists for a given word, its dependency information is
+    # used.  If not, the zhonglib  decomposition data is used.
+    def build_dependency_graph(self, word):
+        result = {}
+        queue = [word]
+        while queue:
+            word = queue.pop()
+            note_ids = find_note_ids_for_word(self.mw.col, word)
+            if len(note_ids) > 1:
+                raise exception.TooManyNotes(word)
+            elif len(note_ids) == 1:
+                note = self.get_note(note_ids[0])
+                dependencies = self.get_all_dependencies(note)
+            else:
+                dependencies = zl.decompose(word, zl.TRADITIONAL)
+            result[word] = dependencies
+            queue += dependencies
+        return result
 
+    def add_missing_dependencies_to_note(self, note):
         errors = exception.MultiException()
         try:
-            dependencies = self.get_all_dependencies(note)
-            for dependency in dependencies:
-                note_ids = find_note_ids_for_word(self.mw.col, dependency)
-                if len(note_ids) == 0:
-                # No notes for the dependency. Create one
+            root_text = get_mandarin_text(note)
+            dependency_graph = self.build_dependency_graph(root_text)
+            sorted_words = zl.topological_sort(dependency_graph)
+            assert sorted_words[-1] == root_text
+            for word in sorted_words:
+                if not note_exists_for_mandarin(self.mw.col, word):
                     try:
-                        new_note = self.add_mandarin_note(note.model(), dependency)
-                        self.add_missing_dependencies_to_note(new_note)
+                        self.add_mandarin_note(note.model(), word)
                     except exception.MagicException as e:
                         errors.append(e)
-                else:
-                # Note already exists for dependency. Add any of its missing
-                # dependencies.
-                    for note_id in note_ids:
-                        try:
-                            self.add_missing_dependencies_to_note(self.get_note(note_id))
-                        except exception.MagicException as e:
-                            errors.append(e)
-        except Exception as e:
+        except exception.MagicException as e:
             errors.append(e)
 
         # Missing components (may) have been added. Have to update the colour

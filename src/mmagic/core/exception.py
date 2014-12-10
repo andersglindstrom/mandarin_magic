@@ -36,3 +36,8 @@ class MultiException(MagicException):
     def raise_if_not_empty(self):
         if len(self) > 0:
             raise self
+
+class TooManyNotes(MagicException):
+
+    def __init__(self, word):
+        super(TooManyNotes, self).__init__('More than one note for "%s"'%word)
