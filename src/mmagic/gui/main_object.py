@@ -143,11 +143,11 @@ def find_notes(collection, field_set, value):
         result += notes
     return result
 
-def find_notes_for_word(collection, word):
+def find_note_ids_for_word(collection, word):
     return find_notes(collection, MANDARIN_FIELDS, word)
 
 def note_exists_for_mandarin(collection, word):
-    return len(find_notes_for_word(collection, word)) > 0
+    return len(find_note_ids_for_word(collection, word)) > 0
 
 #------------------------------------------------------------------------------
 # Formatting routines
@@ -354,7 +354,7 @@ class MainObject:
             all_errors.append(exception.MagicException('Some notes have empty dependency information.'))
         else:
             for dependency in dependencies:
-                note_ids = find_notes_for_word(self.mw.col, dependency)
+                note_ids = find_note_ids_for_word(self.mw.col, dependency)
                 if len(note_ids) > 1:
                     all_errors.append(exception.MagicException('More than one note for "%s"'%dependency))
                     continue
@@ -382,7 +382,7 @@ class MainObject:
         result = {}
         errors = exception.MultiException()
         for word in words:
-            note_ids = find_notes_for_word(self.mw.col, word)
+            note_ids = find_note_ids_for_word(self.mw.col, word)
             if len(note_ids) > 1:
                 errors.append(exception.MagicException('More than one note for "%s"'%word))
                 continue
@@ -393,7 +393,7 @@ class MainObject:
         return (result, errors)
 
     def word_has_notes(self, word):
-        return len(find_notes_for_word(self.mw.col, word)) > 0
+        return len(find_note_ids_for_word(self.mw.col, word)) > 0
 
     def note_has_empty_dependencies(self, note_id):
         return get_decomposition_list(self.get_note(note_id)) == None
@@ -634,7 +634,7 @@ class MainObject:
 
     def add_learning_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
-        note_ids = find_notes_for_word(self.mw.col, word)
+        note_ids = find_note_ids_for_word(self.mw.col, word)
         if len(note_ids) == 0:
             word = add_missing_note_highlight(word)
         else:
@@ -798,6 +798,7 @@ class MainObject:
                 "Try adding manually for further clues."
             ))
         errors.raise_if_not_empty()
+        return note
 
     def add_missing_dependencies_to_note(self, note):
         # Add a note for every composition component that doesn't yet
@@ -806,11 +807,22 @@ class MainObject:
 
         errors = exception.MultiException()
         for dependency in dependencies:
-            if not note_exists_for_mandarin(self.mw.col, dependency):
+            note_ids = find_note_ids_for_word(self.mw.col, dependency)
+            if len(note_ids) == 0:
+            # No notes for the dependency. Create one
                 try:
-                    self.add_mandarin_note(note.model(), dependency)
+                    new_note = self.add_mandarin_note(note.model(), dependency)
+                    self.add_missing_dependencies_to_note(new_note)
                 except exception.MagicException as e:
                     errors.append(e)
+            else:
+            # Note already exists for dependency. Add any of its missing
+            # dependencies.
+                for note_id in note_ids:
+                    try:
+                        self.add_missing_dependencies_to_note(self.get_note(note_id))
+                    except exception.MagicException as e:
+                        errors.append(e)
 
         # Missing components (may) have been added. Have to update the colour
         # of words in the text to reflect this.
