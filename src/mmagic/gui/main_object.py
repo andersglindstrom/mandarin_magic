@@ -697,6 +697,17 @@ class MainObject:
             if has_empty_english_field(note):
                 set_english_field(note, 'Cannot use dictionary to look up sentences')
             # Should also set pinyin here from decomposition
+            if not has_empty_pinyin_field(note):
+                # The field may be in numbered pinyin format
+                # If so, convert it to proper tone marks.
+                pinyin_text = get_pinyin_field(note)
+                try:
+                    formatted = format_pinyin('['+pinyin_text+']')
+                    set_pinyin_field(note, formatted)
+                except Exception:
+                    # Something didn't work.  It's probably not in 
+                    # numbered format.  Just leave it be.
+                    pass
         else:
             # The Mandarin text is either a word or a character. We can look
             # it up in the dictionary.
@@ -706,11 +717,22 @@ class MainObject:
             dictionary_entries = self.dictionary.find(
                 mandarin_text, zl.TRADITIONAL | zl.SIMPLIFIED, include_english=False)
 
-            if len(dictionary_entries) == 0:
+            if len(dictionary_entries) == 0 and has_empty_english_field(note):
                 message = 'No dictionary entry for "' + mandarin_text + '"'
                 errors.append(exception.MagicException(message))
-                if has_empty_english_field(note):
-                    set_english_field(note, "No dictionary entry")
+                set_english_field(note, "No dictionary entry")
+
+            if not has_empty_pinyin_field(note):
+                # The field may be in numbered pinyin format
+                # If so, convert it to proper tone marks.
+                pinyin_text = get_pinyin_field(note)
+                try:
+                    formatted = format_pinyin('['+pinyin_text+']')
+                    set_pinyin_field(note, formatted)
+                except Exception:
+                    # Something didn't work.  It's probably not in 
+                    # numbered format.  Just leave it be.
+                    pass
 
             if len(dictionary_entries) > 0:
                 # Add Englih
@@ -720,17 +742,6 @@ class MainObject:
                 # Add 拼音
                 if has_empty_pinyin_field(note):
                     set_pinyin_field(note, format_pinyin_list(dictionary_entries))
-                else:
-                    # The field may be in numbered pinyin format
-                    # If so, convert it to proper tone marks.
-                    pinyin_text = get_pinyin_field(note)
-                    try:
-                        formatted = format_pinyin('['+pinyin_text+']')
-                        set_pinyin_field(note, formatted)
-                    except Exception:
-                        # Something didn't work.  It's probably not in 
-                        # numbered format.  Just leave it be.
-                        pass
 
                 # Add 量詞
                 if has_empty_measure_word_field(note):
