@@ -229,19 +229,6 @@ def add_highlight(text, colour):
 def add_missing_note_highlight(text):
     return add_highlight(text, 'red')
 
-def add_unlearnt_note_highlight(text):
-    return add_highlight(text, 'orange')
-
-def add_learnt_note_highlight(text):
-    return add_highlight(text, 'green')
-
-def note_is_learnt(note):
-    card_types = [card.type for card in note.cards()]
-    # A card type of '2' means that the cards is in review state.
-    # Other possible values are 0 (new) and 1 (learning).
-    # See anki.note and ank.sched for details.
-    return reduce(operator.and_, map((lambda t: t == 2), card_types), True)
-
 def format_decomposition(decomposition):
     if len(decomposition) == 0:
         return 'None'
@@ -494,8 +481,6 @@ class MainObject:
     def export_to_skritter(self, browser):
         # Generate the dependency graph and then sort topologically.
 
-        print 'export_to_skritter'
-
         # Generate the dependency graph.
         #
         # We have to add all the selected characters and all the characters
@@ -640,39 +625,27 @@ class MainObject:
             # Refresh editor
             editor.setNote(editor.note)
 
-    def add_learning_status_colour_to_word(self, word):
+    def add_status_colour_to_word(self, word):
         # Find all notes that have the given word as the Mandarin field
         note_ids = find_note_ids_for_word(self.mw.col, word)
         if len(note_ids) == 0:
             word = add_missing_note_highlight(word)
-        else:
-            # Find out whether each note is learnt or not.
-            notes_are_learnt = map(
-                lambda note_id: note_is_learnt(self.get_note(note_id)),
-                note_ids
-            )
-            # Are they all learnt?
-            all_learnt = reduce(operator.and_, notes_are_learnt, True)
-            if all_learnt:
-                word = add_learnt_note_highlight(word)
-            else:
-                word = add_unlearnt_note_highlight(word)
         return word
 
-    def add_learning_status_colour(self, text):
+    def add_status_colour(self, text):
         pattern, words = zl.extract_cjk(text)
         highlit_words = tuple(
-            map(lambda w: self.add_learning_status_colour_to_word(w), words)
+            map(lambda w: self.add_status_colour_to_word(w), words)
         )
         return pattern%highlit_words
 
-    def refresh_learning_status_colour(self, note):
+    def refresh_status_colour(self, note):
         if has_decomposition_field(note):
             field = get_decomposition_field(note)
-            set_decomposition_field(note, self.add_learning_status_colour(field))
+            set_decomposition_field(note, self.add_status_colour(field))
         if has_measure_word_field(note):
             field = get_measure_word_field(note)
-            set_measure_word_field(note, self.add_learning_status_colour(field))
+            set_measure_word_field(note, self.add_status_colour(field))
 
     # This function does not flush the note. 'flush' has to be called (either
     # directly or indirectly) from the caller. See 'add_mandarin_note' for
@@ -774,10 +747,7 @@ class MainObject:
             except exception.MagicException as e:
                 errors.append(e)
 
-        # Whether the fields previously existed or they have just been added,
-        # we want to set the colour of words according to their current learning
-        # status.
-        self.refresh_learning_status_colour(note)
+        self.refresh_status_colour(note)
         errors.raise_if_not_empty()
     
     def add_mandarin_note(self, model, text):
@@ -837,7 +807,7 @@ class MainObject:
 
         # Missing components (may) have been added. Have to update the colour
         # of words in the text to reflect this.
-        self.refresh_learning_status_colour(note)
+        self.refresh_status_colour(note)
         note.flush()
 
         errors.raise_if_not_empty()
