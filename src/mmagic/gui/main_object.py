@@ -765,6 +765,10 @@ class MainObject:
     
     def add_mandarin_note(self, model, text):
         errors = exception.MultiException()
+
+        # Create the new note in Default deck
+        model['did'] = self.mw.col.decks.id('Default')
+
         note = anki.notes.Note(self.mw.col, model)
         set_mandarin_field(note, text)
         try:
