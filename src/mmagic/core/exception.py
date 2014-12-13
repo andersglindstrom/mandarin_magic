@@ -25,7 +25,10 @@ class MultiException(MagicException):
         return str(self.get_message_list())
 
     def append(self, exception):
-        self.exceptions.append(exception)
+        if isinstance(exception, MagicException):
+            self.exceptions.append(exception)
+        else:
+            self.exceptions.append(MagicException(unicode(exception)))
 
     def get_message_list(self):
         result = []

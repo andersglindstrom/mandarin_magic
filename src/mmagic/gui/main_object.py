@@ -9,7 +9,7 @@ import aqt.utils
 import anki.notes
 import anki.utils
 import mmagic.core.exception as exception
-import mmagic.zhonglib as zl
+import zhonglib as zl
 
 # All this stuff should be moved to core
 MANDARIN_FIELDS=frozenset({'Front', u'漢字', 'Hanzi', 'Chinese', 'Mandarin', 'Radical'})
@@ -772,9 +772,14 @@ class MainObject:
     # once.  However, it won't tell you if there's a cycle. The graph produced
     # here can be passed to topological_sort.  It will detect cycles.
 
+    # Returns (graph, errors) pair
     def build_dependency_graph(self, word):
         result = {}
         queue = [word]
+
+        errors = exception.MultiException()
+
+        # Do breadth-first traversal of dependency graph.
         while queue:
             word = queue.pop()
             if word in result:
@@ -784,35 +789,63 @@ class MainObject:
                 continue
             note_ids = find_note_ids_for_word(self.mw.col, word)
             if len(note_ids) > 1:
+            # There is more than one note for this word
                 raise exception.TooManyNotes(word)
             elif len(note_ids) == 1:
+            # There is exactly one note for this word.
+            # Extract its component list.
                 note = self.get_note(note_ids[0])
                 dependencies = get_decomposition_list(note)
                 if dependencies == None:
                     msg = '"%s" has missing component list'%word
                     raise exception.MagicException(msg)
             else:
-                dependencies = zl.decompose(word, zl.TRADITIONAL)
+            # There are no notes for this word. Use the decomposition data
+            # to find it dependencies.
+                try:
+                    dependencies = zl.decompose(word, zl.TRADITIONAL)
+                except zl.ZhonglibException as e:
+                    dependencies = []
+                    errors.append(e)
             result[word] = dependencies
             queue += dependencies
-        return result
+        return (result, errors)
 
     def add_missing_dependencies_for_word(self, model, word):
-        errors = exception.MultiException()
+        all_errors = exception.MultiException()
         try:
-            dependency_graph = self.build_dependency_graph(word)
+            # Even if there are errors, we continue with what we have.
+            # At least some of the notes will get created. That's better
+            # than doing nothing at all.
+
+            dependency_graph, errors = self.build_dependency_graph(word)
+
+            all_errors.append(errors)
+
             # topological_sort will detect cycles
             sorted_words = zl.topological_sort(dependency_graph)
+
+            # The word itself should come last in the sorted list now
             assert sorted_words[-1] == word
+            # Don't create a note for the word itself. If it already exists
+            # there's no need to do so.  That case would be handled by the
+            # following code.  However, if the '+' button is pressed from
+            # the 'Add Note' dialog, the note will not yet exist for that
+            # word and the following code will create it.  However, that
+            # means that the 'Add Note' dialog will now detect a duplicate
+            # because the note has been added 'under its feet' so to speak.
+            sorted_words.remove(word)
+            assert not word in sorted_words
+
             for word in sorted_words:
                 if not note_exists_for_mandarin(self.mw.col, word):
                     try:
                         self.add_mandarin_note(model, word)
                     except exception.MagicException as e:
-                        errors.append(e)
+                        all_errors.append(e)
         except exception.MagicException as e:
-            errors.append(e)
-        errors.raise_if_not_empty()
+            all_errors.append(e)
+        all_errors.raise_if_not_empty()
 
     def add_missing_dependencies_for_note(self, note):
         errors = exception.MultiException()
