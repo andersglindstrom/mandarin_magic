@@ -328,7 +328,8 @@ class MainObject:
         all_errors = exception.MultiException()
 
         try:
-            dependencies = get_decomposition_list(self.get_note(note_id))
+            note = self.get_note(note_id)
+            dependencies = get_decomposition_list(note)
             if dependencies == None:
                 msg = '"%s" has missing component list'%get_mandarin_text(note)
                 raise exception.MagicException(msg)
@@ -849,14 +850,19 @@ class MainObject:
 
     def add_missing_dependencies_for_note(self, note):
         errors = exception.MultiException()
+
         try:
             self.add_missing_dependencies_for_word(note.model(), get_mandarin_text(note))
-            if has_measure_word_field(note):
-                measure_words = get_measure_word_list(note)
-                for word in measure_words:
-                    self.add_missing_dependencies_for_word(note.model(), word)
         except exception.MagicException as e:
             errors.append(e)
+
+        if has_measure_word_field(note):
+            measure_words = get_measure_word_list(note)
+            for word in measure_words:
+                try:
+                    self.add_missing_dependencies_for_word(note.model(), word)
+                except exception.MagicException as e:
+                    errors.append(e)
 
         # Missing components (may) have been added. Have to update the colour
         # of words in the text to reflect this.
