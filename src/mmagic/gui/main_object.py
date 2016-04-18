@@ -486,9 +486,9 @@ class MainObject:
 
         # Only export characters (although Skitter seems to work for words
         # too).
-        selected_characters = set(filter(lambda word: len(word) == 1, words))
+        #selected_characters = set(filter(lambda word: len(word) == 1, words))
 
-        chars_and_ids, errors = self.get_note_ids_for_words(selected_characters)
+        words_and_ids, errors = self.get_note_ids_for_words(words)
 
         if len(errors) > 0:
             show_error(errors)
@@ -496,15 +496,15 @@ class MainObject:
 
         # Now, generate the dependency graph.
         dependency_graph = {}
-        for char, note_id in chars_and_ids.iteritems():
+        for word, note_id in words_and_ids.iteritems():
             note = self.get_note(note_id)
 
             # Now get the dependencies for the note but only include
             # characters that are in the selected characters.
             dependencies = get_decomposition_list(note)
-            dependencies = filter(lambda d: d in selected_characters, dependencies)
+            dependencies = filter(lambda d: d in words, dependencies)
 
-            dependency_graph[char] = dependencies
+            dependency_graph[word] = dependencies
 
         # Sort topologically
         for_export = zl.topological_sort(dependency_graph)
@@ -530,7 +530,7 @@ class MainObject:
 
             QtGui.QApplication.clipboard().setText(text)
 
-            ids = map(lambda char: chars_and_ids[char], section)
+            ids = map(lambda word: words_and_ids[word], section)
             print 'adding export_to_skritter to', ids
             self.add_tag(browser, ids, 'exported_to_skritter')
 
